@@ -1,0 +1,21 @@
+name: Build and release firmware
+on:
+  push:
+    tags: ["v*"]          # tag v0.1.1 -> builds -> frames pick it up within 6 hours
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install platformio
+      - name: Build (version taken from the tag)
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          PLATFORMIO_BUILD_FLAGS="-DFW_VERSION=\\\"$V\\\"" pio run
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: .pio/build/esp32/firmware.bin

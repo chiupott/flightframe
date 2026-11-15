@@ -1,0 +1,5 @@
+sim/sd/
+sim/_work/
+build.log
+.pio/
+*.zip

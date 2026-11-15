@@ -1,0 +1,21 @@
+name: Rain mask
+on:
+  schedule: [{ cron: "*/10 * * * *" }]     # GitHub may delay runs; the frame ignores a mask older than 45 minutes
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: rain
+jobs:
+  rain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pillow
+      - run: python tools/make_rain.py rain.bin
+      - name: Upload to the rolling "rain" pre-release (a pre-release never counts as "latest", so it can't be mistaken for a firmware update)
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release view rain >/dev/null 2>&1 || gh release create rain --prerelease --title "Rain mask (rebuilt every 10 min)" --notes "Generated from RainViewer radar. https://www.rainviewer.com"
+          gh release upload rain rain.bin --clobber
