@@ -2,6 +2,7 @@
 #include "config.h"
 struct Aircraft {
   char hex[7] = "";  char cs[9] = "";  char type[5] = "";  char reg[9] = "";
+  char fn[9] = "";                       // flight number as passengers know it (AF98E, not AFR98E)
   char cat[3] = "";                      // ADS-B category, fallback for icon class
   float lat = 0, lon = 0, track = 0;
   int32_t alt = 0;  int16_t gs = 0;      // feet, knots

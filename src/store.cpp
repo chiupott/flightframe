@@ -7,7 +7,7 @@ void storeLoad() {
   cfg.ssid = p.getString("ssid"); cfg.pw = p.getString("pw"); cfg.postcode = p.getString("pc");
   cfg.lat = p.getFloat("lat", NAN); cfg.lon = p.getFloat("lon", NAN);
   cfg.radiusMi = p.getFloat("radf", 50); cfg.km = p.getBool("km", false); cfg.rows = p.getUChar("rows", 5);
-  cfg.heading = p.getUShort("head", 0); cfg.flip = p.getBool("flip", false);
+  cfg.heading = p.getUShort("head", 0); cfg.view = p.getUChar("view", 0); cfg.flip = p.getBool("flip", false);
   cfg.rain = p.getBool("rain", true); cfg.h24 = p.getBool("h24", true);
   p.end();
 }
@@ -16,7 +16,7 @@ void storeSave() {
   p.putString("ssid", cfg.ssid); p.putString("pw", cfg.pw); p.putString("pc", cfg.postcode);
   p.putFloat("lat", cfg.lat); p.putFloat("lon", cfg.lon);
   p.putFloat("radf", cfg.radiusMi); p.putBool("km", cfg.km); p.putUChar("rows", cfg.rows);
-  p.putUShort("head", cfg.heading); p.putBool("flip", cfg.flip);
+  p.putUShort("head", cfg.heading); p.putUChar("view", cfg.view); p.putBool("flip", cfg.flip);
   p.putBool("rain", cfg.rain); p.putBool("h24", cfg.h24);
   p.end();
 }

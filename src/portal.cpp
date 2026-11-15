@@ -27,7 +27,8 @@ void portalRun() {
     cfg.km = String(d["unit"] | "mi") == "km";
     float r = d["radius"] | 50.0f; if (cfg.km) r /= 1.609344f;
     cfg.radiusMi = constrain(r, 3.0f, 100.0f);
-    if (d["lat"].is<float>() && d["lon"].is<float>()) { cfg.lat = d["lat"]; cfg.lon = d["lon"]; }    // optional manual coordinates, skips the postcode lookup cfg.rows = constrain((int)(d["rows"] | 5), 3, 6);
+    if (d["lat"].is<float>() && d["lon"].is<float>()) { cfg.lat = d["lat"]; cfg.lon = d["lon"]; }    // optional manual coordinates, skips the postcode lookup
+    cfg.rows = constrain((int)(d["rows"] | 5), 3, 6); cfg.view = (int)(d["view"] | 0) == 1 ? 1 : 0;
     cfg.heading = (int)(d["head"] | 0) % 360; cfg.flip = d["flip"] | false; cfg.rain = d["rain"] | true; cfg.h24 = d["h24"] | true;
     storeSave(); saved = true; web.send(200, "text/plain", "ok");
   });

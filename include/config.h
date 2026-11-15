@@ -14,7 +14,7 @@
 #define FULL_REFRESH_EVERY 12           // partial refreshes between full ones
 #define GOOD_BOOT_MS       5000UL       // uptime after which the 3x power-cycle counter resets
 #define MAX_TRAIL_PTS      10
-#define MAX_AIRCRAFT       24
+#define MAX_AIRCRAFT       40
 #define TRAIL_KEEP_MS      (5UL*60UL*1000UL)
 
 // ---- Display pins: Waveshare-style ESP32 driver board (CHECK against the kit on arrival) ----
@@ -32,7 +32,8 @@ struct Config {
   float lat = NAN, lon = NAN;
   float radiusMi = 50;     // radar radius in miles (always stored in miles; km users get a converted value)
   uint8_t rows = 5;
-  uint16_t heading = 0;    // degrees that point "up" on the screen
+  uint16_t heading = 0;    // degrees that point "up" on the screen (radar) / the way the window faces (window view)
+  uint8_t view = 0;        // 0 = radar + list, 1 = window view
   bool flip = false, rain = true, h24 = true, km = false;   // km: show distances and radius in kilometres
   bool valid() const { return ssid.length() && !isnan(lat) && !isnan(lon); }
 };

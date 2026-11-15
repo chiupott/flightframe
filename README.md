@@ -22,8 +22,11 @@ ESP32 + 7.5" 800x480 e-paper. Shows aircraft near a location on a radar plus a l
 ## Not in this repo
 - Airline logos (`/logos/<ICAO>.bmp`, on the SD card): scraped, trademarked.
 
+## Window view (second screen mode)
+The frame hangs upright by a window and shows what is out of it: planes by compass bearing and height angle (175 degree field of view), over the skyline with contour lines. Chosen in the setup page (View: Window). It needs two files on the SD card: `/window/terrain.bin` (skyline for the frame's own spot and facing, made with `tools/window_view.py --export`; it reveals the location, so it is never committed) and `/sprites.bin` (pre-rendered 3D aircraft pictures from `tools/bake_planes.py`). Without the terrain file the frame shows a message.
+
 ## Credits
-Plane data: adsb.fi. Routes: adsbdb. Postcodes: postcodes.io. Rain: RainViewer. Icons: ADS-B Radar (https://adsb-radar.com).
+Plane data: adsb.fi. Routes: adsbdb. Postcodes: postcodes.io. Rain: RainViewer. Icons: ADS-B Radar (https://adsb-radar.com). Airline code table (`tools/airlines_iata.csv`, short flight numbers): OpenFlights airlines.dat, ODbL (https://openflights.org). Window-view terrain: AWS Terrain Tiles (Terrarium), built from SRTM and other open elevation sources (https://registry.opendata.aws/terrain-tiles/).
 
 ## Host simulator (no hardware needed)
 `sim/run.sh flights.json out.png` compiles the real sources against stand-ins for the ESP32 parts (fake clock, scripted network, in-memory flash, 800x480 framebuffer) and renders the screen after 12 simulated polls. Needs the ArduinoJson, Adafruit GFX and ArduinoCore-API sources (paths at the top of `run.sh`). `SIM_HEAD=90` and `SIM_FLIP=1` test rotation and mirroring.

@@ -41,7 +41,7 @@ void loop() {
   if (!wifi) wifi = wifiConnect(10000);
   Feed feed = Feed::None;
   if (wifi && adsbPoll()) {
-    for (uint8_t i = 0; i < nPlanes && i < cfg.rows; i++) routeLookup(planes[i]);   // only the rows we show
+    if (cfg.view == 0) for (uint8_t i = 0; i < nPlanes && i < cfg.rows; i++) routeLookup(planes[i]);   // only the rows we show
     feed = Feed::Live; lastGood = millis();
   } else if (lastGood && millis() - lastGood < 10UL * 60UL * 1000UL) feed = Feed::Stale;
   if (wifi && cfg.rain && (!lastRain || millis() - lastRain > 10UL * 60UL * 1000UL)) { lastRain = millis(); rainRefresh(); }
