@@ -50,6 +50,7 @@ static float dU(float mi) { return cfg.km ? mi * 1.609344f : mi; }
 static const char* uName() { return cfg.km ? "km" : "mi"; }
 static const int LX = 483, RH = 88;
 static void drawList(const char* clock) {
+  epd.fillRect(LX, 0, 800 - LX, 480, PAPER);        // wipe anything the radar spilled over (labels, icons, trails near the edge)
   epd.fillRect(LX, 0, 3, 480, INK);
   put(&Nico16, LX + 15, 26, String("TOP ") + cfg.rows + " NEAREST");
   put(&Nico14, 800 - 12 - tw(&Nico14, clock), 25, clock);
@@ -124,9 +125,21 @@ static void drawRadar(Feed feed, bool wifiOk, const char* clock) {
       if (!bad) { pick = k; pb = b; }
     }
     bool placed = pick >= 0; if (!placed) pick = 0;
+    if (!placed) {                                  // nothing fit: take the in-bounds spot that overlaps least, never one that leaves the radar
+      int best = -1, bestHits = 1 << 30;
+      for (int k = 0; k < 12; k++) {
+        float bx = c[k].anc == 0 ? c[k].lx : c[k].anc == 1 ? c[k].lx - w : c[k].lx - w / 2.0f;
+        Rect b{(int)(bx - 2), (int)(c[k].ly - 12), (int)(bx + w + 2), (int)(c[k].ly + 33)};
+        if (b.x0 < 2 || b.x1 > 478 || b.y0 < 2 || b.y1 > 478) continue;
+        int hits = 0; for (size_t j = 0; j < boxes.size(); j++) { if (j >= 6 && j - 6 == i) continue; if (hit(b, boxes[j])) hits++; }
+        if (hits < bestHits) { bestHits = hits; best = k; }
+      }
+      if (best >= 0) pick = best;
+    }
     float x0 = c[pick].anc == 0 ? c[pick].lx : c[pick].anc == 1 ? c[pick].lx - w : c[pick].lx - w / 2.0f; int ly = (int)c[pick].ly;
+    int dx = 0; if (x0 + w > 477) dx = 477 - (int)(x0 + w); if (x0 + dx < 3) dx = 3 - (int)x0;   // last resort: shift inside the radar
     if (placed) boxes.push_back(pb);
-    auto line = [&](const GFXfont* f, int yy, const String& s) { int sw = tw(f, s); int xx = c[pick].anc == 0 ? (int)x0 : c[pick].anc == 1 ? (int)(c[pick].lx - sw) : (int)(c[pick].lx - sw / 2.0f); putHalo(f, xx, yy, s, 2); };
+    auto line = [&](const GFXfont* f, int yy, const String& s) { int sw = tw(f, s); int xx = c[pick].anc == 0 ? (int)x0 : c[pick].anc == 1 ? (int)(c[pick].lx - sw) : (int)(c[pick].lx - sw / 2.0f); putHalo(f, xx + dx, yy, s, 2); };
     line(&Nico14, ly, t1); line(&NicoItalic14, ly + 14, t3); line(&Nico14, ly + 28, t2);
   }
 
