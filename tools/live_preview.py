@@ -34,7 +34,8 @@ img{display:block;width:100%;image-rendering:pixelated;background:#e6e6df}p{marg
 document.getElementById('s').src='screen.png?'+j.t;document.getElementById('t').innerHTML='<b>'+j.planes+' aircraft</b> within '+j.radius+' mi · updated '+j.time+' · rain radar '+j.rain+(j.err?' · <span style=color:#f88>'+j.err+'</span>':'')}catch(e){}}
 u();setInterval(u,10000)</script>"""
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--lat", type=float, required=True); ap.add_argument("--lon", type=float, required=True)
+    ap = argparse.ArgumentParser(); ap.add_argument('--lan', action='store_true', help='also serve on the local network (for opening on a phone)')
+    ap.add_argument("--lat", type=float, required=True); ap.add_argument("--lon", type=float, required=True)
     ap.add_argument("--assets", required=True); ap.add_argument("--port", type=int, default=8765); ap.add_argument("--radius", type=float, default=50)
     ap.add_argument("--head", default="0"); ap.add_argument("--once", action="store_true")
     a = ap.parse_args(); A = os.path.expanduser(a.assets); work = os.path.join(A, "work"); www = os.path.join(A, "www"); sd = os.path.join(A, "sd")
@@ -42,7 +43,7 @@ def main():
     sim = build(A, work); open(os.path.join(www, "index.html"), "w").write(PAGE)
     if not a.once:
         h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=www); h.log_message = lambda *x: None
-        threading.Thread(target=http.server.ThreadingHTTPServer(("127.0.0.1", a.port), h).serve_forever, daemon=True).start()
+        threading.Thread(target=http.server.ThreadingHTTPServer(("0.0.0.0" if a.lan else "127.0.0.1", a.port), h).serve_forever, daemon=True).start()
         print(f"open http://localhost:{a.port}")
     hist, routes, rain_t, rain_age = [], {}, 0, "none"
     env = dict(os.environ, SIM_LAT=str(a.lat), SIM_LON=str(a.lon), SIM_CLOCK="live", SIM_HEAD=a.head)

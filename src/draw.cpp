@@ -110,37 +110,41 @@ static void drawRadar(Feed feed, bool wifiOk, const char* clock) {
   }
   for (uint8_t i = 0; i < nPlanes; i++) drawTrail(planes[i], X[i], Y[i]);
   for (uint8_t i = 0; i < nPlanes; i++) { const Aircraft& a = planes[i]; drawSprite(epd, (int)X[i], (int)Y[i], viewAngle(a.track), spriteFor(a.type, a.cat)); }
+  // labels: try the full 3-line label (callsign / type / route) in 12 spots; if none is free drop the type line, then the route, and only then take the least-overlapping in-bounds spot
   for (uint8_t i = 0; i < nPlanes; i++) {
     const Aircraft& a = planes[i];
     String t1 = a.cs[0] ? a.cs : a.hex, t2 = String("\xE2\x86\x92 ") + (a.routeKnown ? a.to : "?"), t3 = a.type;
-    int w = max(tw(&Nico14, t1), max(tw(&NicoItalic14, t3), tw(&Nico14, t2)));
     float x = X[i], y = Y[i]; int r = R_[i] + 1;
-    struct C { int anc; float lx, ly; } c[12] = {{0, x + r, y - 8}, {1, x - r, y - 8}, {2, x, y - r - 36}, {2, x, y + r + 16}, {0, x + r, y - 30}, {1, x - r, y - 30}, {0, x + r, y + 12}, {1, x - r, y + 12}, {0, x + r, y - 46}, {1, x - r, y - 46}, {0, x + r, y + 28}, {1, x - r, y + 28}};
-    int pick = -1; Rect pb{};
-    for (int k = 0; k < 12 && pick < 0; k++) {
-      float x0 = c[k].anc == 0 ? c[k].lx : c[k].anc == 1 ? c[k].lx - w : c[k].lx - w / 2.0f;
-      Rect b{(int)(x0 - 2), (int)(c[k].ly - 12), (int)(x0 + w + 2), (int)(c[k].ly + 33)};
-      if (b.x0 < 2 || b.x1 > 478 || b.y0 < 2 || b.y1 > 478) continue;
-      bool bad = false; for (size_t j = 0; j < boxes.size(); j++) { if (j >= 6 && j - 6 == i) continue; if (hit(b, boxes[j])) { bad = true; break; } }
-      if (!bad) { pick = k; pb = b; }
+    struct Cand { Rect b; float x0; float lx, ly; int anc; };
+    auto cand = [&](int lines, int k, int w) {
+      float ly[12] = {y - 8, y - 8, y - r - 8 - 14.0f * (lines - 1), y + r + 16, y - 30, y - 30, y + 12, y + 12, y - 46, y - 46, y + 28, y + 28};
+      float lx[12] = {x + r, x - r, x, x, x + r, x - r, x + r, x - r, x + r, x - r, x + r, x - r};
+      int anc[12] = {0, 1, 2, 2, 0, 1, 0, 1, 0, 1, 0, 1};
+      Cand c{}; c.lx = lx[k]; c.ly = ly[k]; c.anc = anc[k];
+      c.x0 = c.anc == 0 ? c.lx : c.anc == 1 ? c.lx - w : c.lx - w / 2.0f;
+      c.b = {(int)(c.x0 - 2), (int)(c.ly - 12), (int)(c.x0 + w + 2), (int)(c.ly + 14 * (lines - 1) + 5)};
+      return c;
+    };
+    auto inBounds = [](const Rect& b) { return !(b.x0 < 2 || b.x1 > 478 || b.y0 < 2 || b.y1 > 478); };
+    auto hits = [&](const Rect& b) { int n = 0; for (size_t j = 0; j < boxes.size(); j++) { if (j >= 6 && j - 6 == i) continue; if (hit(b, boxes[j])) n++; } return n; };
+    int lines = 3, pick = -1; Cand ch{};
+    for (int L = 3; L >= 1 && pick < 0; L--) {
+      int w = tw(&Nico14, t1); if (L >= 2) w = max(w, tw(&Nico14, t2)); if (L == 3) w = max(w, tw(&NicoItalic14, t3));
+      for (int k = 0; k < 12 && pick < 0; k++) { Cand c = cand(L, k, w); if (inBounds(c.b) && !hits(c.b)) { pick = k; ch = c; lines = L; } }
     }
-    bool placed = pick >= 0; if (!placed) pick = 0;
-    if (!placed) {                                  // nothing fit: take the in-bounds spot that overlaps least, never one that leaves the radar
-      int best = -1, bestHits = 1 << 30;
-      for (int k = 0; k < 12; k++) {
-        float bx = c[k].anc == 0 ? c[k].lx : c[k].anc == 1 ? c[k].lx - w : c[k].lx - w / 2.0f;
-        Rect b{(int)(bx - 2), (int)(c[k].ly - 12), (int)(bx + w + 2), (int)(c[k].ly + 33)};
-        if (b.x0 < 2 || b.x1 > 478 || b.y0 < 2 || b.y1 > 478) continue;
-        int hits = 0; for (size_t j = 0; j < boxes.size(); j++) { if (j >= 6 && j - 6 == i) continue; if (hit(b, boxes[j])) hits++; }
-        if (hits < bestHits) { bestHits = hits; best = k; }
-      }
-      if (best >= 0) pick = best;
+    bool placed = pick >= 0;
+    if (!placed) {                                  // crowded: the in-bounds 1-line spot that overlaps least
+      int w = tw(&Nico14, t1), bestHits = 1 << 30; lines = 1;
+      for (int k = 0; k < 12; k++) { Cand c = cand(1, k, w); if (!inBounds(c.b)) continue; int h = hits(c.b); if (h < bestHits) { bestHits = h; ch = c; pick = k; } }
+      if (pick < 0) { ch = cand(1, 0, w); pick = 0; }
     }
-    float x0 = c[pick].anc == 0 ? c[pick].lx : c[pick].anc == 1 ? c[pick].lx - w : c[pick].lx - w / 2.0f; int ly = (int)c[pick].ly;
-    int dx = 0; if (x0 + w > 477) dx = 477 - (int)(x0 + w); if (x0 + dx < 3) dx = 3 - (int)x0;   // last resort: shift inside the radar
-    if (placed) boxes.push_back(pb);
-    auto line = [&](const GFXfont* f, int yy, const String& s) { int sw = tw(f, s); int xx = c[pick].anc == 0 ? (int)x0 : c[pick].anc == 1 ? (int)(c[pick].lx - sw) : (int)(c[pick].lx - sw / 2.0f); putHalo(f, xx + dx, yy, s, 2); };
-    line(&Nico14, ly, t1); line(&NicoItalic14, ly + 14, t3); line(&Nico14, ly + 28, t2);
+    if (placed || pick >= 0) boxes.push_back(ch.b);
+    int dx = 0; { int w = ch.b.x1 - ch.b.x0 - 4; if (ch.x0 + w > 477) dx = 477 - (int)(ch.x0 + w); if (ch.x0 + dx < 3) dx = 3 - (int)ch.x0; }   // last resort: shift inside the radar
+    auto line = [&](const GFXfont* f, int yy, const String& s) { int sw = tw(f, s); int xx = ch.anc == 0 ? (int)ch.x0 : ch.anc == 1 ? (int)(ch.lx - sw) : (int)(ch.lx - sw / 2.0f); putHalo(f, xx + dx, yy, s, 2); };
+    int ly = (int)ch.ly;
+    line(&Nico14, ly, t1);
+    if (lines == 3) { line(&NicoItalic14, ly + 14, t3); line(&Nico14, ly + 28, t2); }
+    else if (lines == 2) line(&Nico14, ly + 14, t2);
   }
 
   // overlays (design coordinates, radar view)
