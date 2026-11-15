@@ -150,7 +150,7 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
     </div>
     <div>
       <span class="lbl">Distances in</span>
-      <div class="seg" role="group" aria-label="Distance unit"><button type="button" data-unit="mi" aria-pressed="true">Miles</button><button type="button" data-unit="km" aria-pressed="false">Kilometres</button></div>
+      <div class="seg" role="group" aria-label="Distance unit"><button type="button" data-unit="mi" aria-pressed="true">Miles</button><button type="button" data-unit="km" aria-pressed="false">Kilometres</button><button type="button" data-unit="nm" aria-pressed="false">Nautical miles</button></div>
     </div>
   </section>
 
@@ -195,12 +195,16 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
     <header><span class="n">4</span><h2 id="h4s">What to show</h2></header>
     <div>
       <span class="lbl">View</span>
-      <div class="seg" role="group" aria-label="View"><button type="button" data-view="0" aria-pressed="true">Radar</button><button type="button" data-view="1" aria-pressed="false">Window</button></div>
+      <div class="seg" role="group" aria-label="View"><button type="button" data-view="0" aria-pressed="true">Radar</button><button type="button" data-view="1" aria-pressed="false">Window</button><button type="button" data-view="2" aria-pressed="false">Engines</button></div>
       <p class="hint" id="viewhint" style="margin-top:6px">A map of the sky around the frame with a list of the nearest flights.</p>
     </div>
     <div id="rowsbox">
       <label for="rows">Flights in the list</label>
       <div class="rng"><input id="rows" type="range" min="3" max="5" step="1" value="5"><output id="rowsv" for="rows">5</output></div>
+    </div>
+    <div id="hlbox" style="display:none">
+      <span class="lbl">Engine maker to highlight</span>
+      <div class="seg" role="group" aria-label="Engine maker"><button type="button" data-hl="0" aria-pressed="false">None</button><button type="button" data-hl="1" aria-pressed="false">CFM</button><button type="button" data-hl="2" aria-pressed="false">P&amp;W</button><button type="button" data-hl="3" aria-pressed="true">GE</button><button type="button" data-hl="4" aria-pressed="false">Rolls-Royce</button></div>
     </div>
     <label class="toggle" id="rainbox" for="rain"><input id="rain" type="checkbox" checked><span><b>Rain over the radar</b><small>Hatched bands from the weather radar.</small></span></label>
     <label class="toggle" for="h24"><input id="h24" type="checkbox" checked><span><b>24-hour clock</b><small>Times show as 13:04 instead of 1:04 pm.</small></span></label>
@@ -220,7 +224,7 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
 
 <script>
 (function(){
-  var S={ssid:'',pw:'',pc:'',lat:null,lon:null,radius:50,unit:'mi',head:0,flip:false,view:0,rows:5,rain:true,h24:true};
+  var S={ssid:'',pw:'',pc:'',lat:null,lon:null,radius:50,unit:'mi',head:0,flip:false,view:0,hl:3,rows:5,rain:true,h24:true};
   var NETS=[];
   var $=function(id){return document.getElementById(id)};
   var NS='http://www.w3.org/2000/svg';
@@ -256,8 +260,9 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
   document.querySelectorAll('[data-unit]').forEach(function(b){b.addEventListener('click',function(){
     var u=b.getAttribute('data-unit');if(u===S.unit)return;
     var r=$('radius');
-    S.radius=u==='km'?Math.round(S.radius*1.609/5)*5:Math.round(S.radius/1.609/5)*5;
-    r.max=u==='km'?80:50;S.unit=u;r.value=S.radius;
+    var F={mi:1,km:1.609344,nm:0.868976},MX={mi:50,km:80,nm:45};
+    S.radius=Math.max(5,Math.min(MX[u],Math.round(S.radius/F[S.unit]*F[u]/5)*5));
+    r.max=MX[u];S.unit=u;r.value=S.radius;
     document.querySelectorAll('[data-unit]').forEach(function(x){x.setAttribute('aria-pressed',x===b)});render();
   })});
 
@@ -282,6 +287,7 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
   $('flip').addEventListener('change',function(){S.flip=this.checked;render()});
   document.querySelectorAll('[data-view]').forEach(function(b){b.addEventListener('click',function(){
     S.view=+b.getAttribute('data-view');render()})});
+  document.querySelectorAll('[data-hl]').forEach(function(b){b.addEventListener('click',function(){S.hl=+b.getAttribute('data-hl');render()})});
   $('rows').addEventListener('input',function(){S.rows=+this.value;render()});
   $('rain').addEventListener('change',function(){S.rain=this.checked;render()});
   $('h24').addEventListener('change',function(){S.h24=this.checked;render()});
@@ -344,19 +350,20 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
     $('why').textContent=d===0?'North is straight up on the screen.':'The map turns so that '+name8(d)+' is at the top. Aeroplane labels stay upright.';
     $('radiusv').textContent=S.radius+' '+S.unit;
     $('rowsv').textContent=S.rows;
-    var w=S.view===1;
+    var w=S.view>0;
     document.querySelectorAll('[data-view]').forEach(function(b){b.setAttribute('aria-pressed',+b.getAttribute('data-view')===S.view)});
-    $('s3').style.display=w?'none':'';$('rowsbox').style.display=w?'none':'';$('rainbox').style.display=w?'none':'';
-    $('viewhint').textContent=w?'What you would see out of the window: planes in front of the frame, by compass direction and height, over the skyline. Needs the window file on the SD card (made for your spot).':'A map of the sky around the frame with a list of the nearest flights.';
+    $('s3').style.display=w?'none':'';$('rowsbox').style.display=w?'none':'';$('rainbox').style.display=w?'none':'';$('hlbox').style.display=S.view===2?'':'none';
+    document.querySelectorAll('[data-hl]').forEach(function(b){b.setAttribute('aria-pressed',+b.getAttribute('data-hl')===S.hl)});
+    $('viewhint').textContent=S.view===2?'The planes in range flow through a jet engine into the engine makers, with a table of engines and people on board. Uses the radar radius from step 2.':w?'What you would see out of the window: planes in front of the frame, by compass direction and height, over the skyline. Needs the window file on the SD card (made for your spot).':'A map of the sky around the frame with a list of the nearest flights.';
     drawPreview();
-    $('json').textContent=JSON.stringify({wifi:{ssid:S.ssid,password:S.pw?'••••••••':''},location:(S.lat!==null&&S.lon!==null?{lat:S.lat,lon:S.lon}:{postcode:S.pc}),radar:{radius:S.radius,unit:S.unit,top_faces_deg:S.head,rain:S.rain},screen:{view:S.view?'window':'radar',rotate_180:S.flip,rows:S.rows,clock_24h:S.h24}},null,2);
+    $('json').textContent=JSON.stringify({wifi:{ssid:S.ssid,password:S.pw?'••••••••':''},location:(S.lat!==null&&S.lon!==null?{lat:S.lat,lon:S.lon}:{postcode:S.pc}),radar:{radius:S.radius,unit:S.unit,top_faces_deg:S.head,rain:S.rain},screen:{view:['radar','window','engines'][S.view],highlight_maker:['none','CFM','P&W','GE','Rolls-Royce'][S.hl],rotate_180:S.flip,rows:S.rows,clock_24h:S.h24}},null,2);
     var st=$('status');st.className='status';st.textContent='Unsaved changes.';
   }
   $('save').addEventListener('click',function(){
     var b=this,st=$('status'),manual=S.lat!==null&&S.lon!==null;
     if(!S.ssid){st.className='status';st.textContent='Pick your Wi-Fi network first (step 1).';return}
     if(!manual&&S.pc.length<5){st.className='status';st.textContent='Enter your postcode, or coordinates, in step 2.';return}
-    var body={ssid:S.ssid,pw:S.pw,postcode:S.pc,radius:S.radius,unit:S.unit,head:S.head,flip:S.flip,view:S.view,rows:S.rows,rain:S.rain,h24:S.h24};
+    var body={ssid:S.ssid,pw:S.pw,postcode:S.pc,radius:S.radius,unit:S.unit,head:S.head,flip:S.flip,view:S.view,hl:S.hl,rows:S.rows,rain:S.rain,h24:S.h24};
     if(manual){body.lat=S.lat;body.lon=S.lon}
     b.disabled=true;st.className='status';st.textContent='Saving…';
     fetch('/api/save',{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}).then(function(r){

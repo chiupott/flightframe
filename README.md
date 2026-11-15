@@ -25,6 +25,9 @@ ESP32 + 7.5" 800x480 e-paper. Shows aircraft near a location on a radar plus a l
 ## Window view (second screen mode)
 The frame hangs upright by a window and shows what is out of it: planes by compass bearing and height angle (175 degree field of view), over the skyline with contour lines. Chosen in the setup page (View: Window). It needs two files on the SD card: `/window/terrain.bin` (skyline for the frame's own spot and facing, made with `tools/window_view.py --export`; it reveals the location, so it is never committed) and `/sprites.bin` (pre-rendered 3D aircraft pictures from `tools/bake_planes.py`). Without the terrain file the frame shows a message.
 
+## Engines view (third screen mode)
+Top two thirds: a flow diagram of the planes in range, grouped by family, into a 3D-style turbofan and out to the engine makers (CFM, Pratt & Whitney, GE, Rolls-Royce). Bottom third: engines and people in the air per maker, a big people total and the thrust overhead. Chosen in the setup page (View: Engines). The setup page also sets the radius (miles, km or nautical miles) and which maker to highlight. Engine models are inferred from the aircraft type (the ADS-B feed does not carry them), so treat the maker split as a good guess. Counts use the nearest 40 planes; light and unknown aircraft are ignored. The engine picture is pre-rendered (`tools/bake_engine.py`, needs numpy and scipy) into `src/engine_img.h`.
+
 ## Credits
 Plane data: adsb.fi. Routes: adsbdb. Postcodes: postcodes.io. Rain: RainViewer. Icons: ADS-B Radar (https://adsb-radar.com). Airline code table (`tools/airlines_iata.csv`, short flight numbers): OpenFlights airlines.dat, ODbL (https://openflights.org). Window-view terrain: AWS Terrain Tiles (Terrarium), built from SRTM and other open elevation sources (https://registry.opendata.aws/terrain-tiles/).
 

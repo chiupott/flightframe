@@ -60,6 +60,7 @@ int main(int argc, char** argv) {
   DIR_ = argc > 1 ? argv[1] : "."; int polls = argc > 2 ? atoi(argv[2]) : 12; if (argc > 3) g_outPath = argv[3];
   g_nvs["ssid"] = "SimWiFi"; g_nvs["pc"] = "SIM 1AA";               // as if setup page had been completed
   if (getenv("SIM_HEAD")) g_nvs["head"] = getenv("SIM_HEAD"); if (getenv("SIM_FLIP")) g_nvs["flip"] = "1"; if (getenv("SIM_VIEW")) g_nvs["view"] = getenv("SIM_VIEW");
+  if (getenv("SIM_NM")) g_nvs["nm"] = "1"; if (getenv("SIM_HL")) g_nvs["hl"] = getenv("SIM_HL"); if (getenv("SIM_RAD")) g_nvs["radf"] = getenv("SIM_RAD");
   setup();
   while (g_drawCount < polls) { loop(); }
   printf("[sim] %d screens drawn, last at t=%us, final -> %s\n", g_drawCount, millis() / 1000, g_outPath);

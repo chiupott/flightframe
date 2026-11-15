@@ -47,8 +47,8 @@ static void drawLogo(const char* cs, int x, int y) {
   free(b);
   box(x, y + 9, 44, 26); put(&Nico14, x + 22 - tw(&Nico14, al) / 2, y + 27, al);        // no logo on the card: code badge
 }
-static float dU(float mi) { return cfg.km ? mi * 1.609344f : mi; }
-static const char* uName() { return cfg.km ? "km" : "mi"; }
+static float dU(float mi) { return cfg.km ? mi * 1.609344f : cfg.nm ? mi * 0.868976f : mi; }
+static const char* uName() { return cfg.km ? "km" : cfg.nm ? "nm" : "mi"; }
 static const int LX = 483, RH = 88;
 static void drawList(const char* clock) {
   epd.fillRect(LX, 0, 800 - LX, 480, PAPER);        // wipe anything the radar spilled over (labels, icons, trails near the edge)
@@ -299,6 +299,7 @@ static void drawWindow(Feed feed, bool wifiOk, const char* clock) {
   box(791 - bw, 9, bw, 27); put(&Nico14, 791 - bw + 10, 28, ban);
 }
 
+#include "engview.h"
 void drawInit() { SPI.begin(EPD_SCK, -1, EPD_MOSI, EPD_CS); epd.init(115200, true, 2, false); epd.setRotation(0); }
 void drawMessage(const char* l1, const char* l2) {
   epd.setFullWindow(); epd.firstPage();
@@ -310,5 +311,5 @@ void drawScreen(Feed feed, bool wifiOk) {
   epd.firstPage();
   String clk = clockStr();
   if (cfg.view == 1) { winLoad(); if (!wp.ok) { drawMessage("Window view needs its terrain file", "Copy /window/terrain.bin to the SD card"); return; } }
-  do { epd.fillScreen(PAPER); if (cfg.view == 1) drawWindow(feed, wifiOk, clk.c_str()); else { drawRadar(feed, wifiOk, clk.c_str()); drawList(clk.c_str()); } } while (epd.nextPage());
+  do { epd.fillScreen(PAPER); if (cfg.view == 1) drawWindow(feed, wifiOk, clk.c_str()); else if (cfg.view == 2) drawEngines(clk.c_str()); else { drawRadar(feed, wifiOk, clk.c_str()); drawList(clk.c_str()); } } while (epd.nextPage());
 }
