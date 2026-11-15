@@ -1,6 +1,6 @@
 name: Rain mask
 on:
-  schedule: [{ cron: "*/10 * * * *" }]     # GitHub may delay runs; the frame ignores a mask older than 45 minutes
+  schedule: [{ cron: "*/10 * * * *" }]     # GitHub may delay runs; the frame ignores a mask older than 90 minutes
   workflow_dispatch:
 permissions:
   contents: write

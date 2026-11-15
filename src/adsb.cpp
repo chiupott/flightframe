@@ -32,7 +32,7 @@ static void trailAdd(const Aircraft& a) {
 }
 
 bool adsbPoll() {
-  // adsb.fi open API v3. radius in nautical miles. TODO: confirm v3 path on first real call.
+  // adsb.fi open API v3. radius in nautical miles. Path confirmed against the live API on 15 Nov.
   float nm = cfg.radiusMi * 0.868976f;
   String url = "https://opendata.adsb.fi/api/v3/lat/" + String(cfg.lat, 4) + "/lon/" + String(cfg.lon, 4) + "/dist/" + String(nm, 0);
   String body; if (!httpsGet(url, body, 15000)) return false;

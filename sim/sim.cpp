@@ -38,7 +38,12 @@ bool httpsGet(const String& url, String& body, uint32_t) {
 bool storInit() { return true; }
 bool rainRefresh() { return false; }   // the real one downloads from GitHub
 #include "clock.h"
-uint32_t clockNow() { return 0; } bool clockSet() { return true; } String clockStr() { return "13:35"; } void clockInit(uint32_t) {}
+uint32_t clockNow() { return 0; } bool clockSet() { return true; } void clockInit(uint32_t) {}
+#include <ctime>
+String clockStr() {                                       // fixed 13:35 for reproducible test pictures; SIM_CLOCK=live uses this computer's time
+  if (!getenv("SIM_CLOCK")) return "13:35";
+  time_t n = time(nullptr); tm t; localtime_r(&n, &t); char b[8]; snprintf(b, sizeof b, "%02d:%02d", t.tm_hour, t.tm_min); return b;
+}
 bool storReadRect(const char* path, size_t base, size_t srcStride, int row0, int rows, int byte0, int nbytes, uint8_t* out) {
   std::string p = DIR_ + "/../sd" + path; FILE* f = fopen(p.c_str(), "rb"); if (!f) return false;
   for (int r = 0; r < rows; r++) { if (fseek(f, base + (size_t)(row0 + r) * srcStride + byte0, SEEK_SET) || fread(out + (size_t)r * nbytes, 1, nbytes, f) != (size_t)nbytes) { fclose(f); return false; } }

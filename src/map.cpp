@@ -83,7 +83,7 @@ static bool loadRain(RainMask& m) {
   if (!storReadRect("/map/rain.bin", 0, 14, 0, 1, 0, 14, h) || memcmp(h, "FFR2", 4)) return false;
   m.tx0 = h[4]; m.ty0 = h[5]; m.w = rd16(h + 6); m.h = rd16(h + 8);
   uint32_t ts = h[10] | (h[11] << 8) | (h[12] << 16) | ((uint32_t)h[13] << 24), now = clockNow();
-  if (now && ts && now > ts + 45 * 60) return false;                              // radar older than 45 min: better no rain than wrong rain
+  if (now && ts && now > ts + 90 * 60) return false;                              // radar older than 90 min (GitHub runs the 10-minute job about hourly): better no rain than wrong rain
   float umin = 1e9f, umax = -1e9f, vmin = 1e9f, vmax = -1e9f;
   for (int k = 0; k < 4; k++) {                                                   // bounding box of the radar view in mask pixels
     float la, lo, X, Y; viewUnproj((k & 1) ? VW : 0, (k & 2) ? VW : 0, la, lo); worldPx(la, lo, X, Y);
