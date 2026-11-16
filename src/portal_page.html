@@ -144,13 +144,6 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
         <div><label for="lon">Longitude</label><input id="lon" type="number" step="0.0001" inputmode="decimal"></div>
       </div>
     </details>
-    <details>
-      <summary>Airline logos (optional key)</summary>
-      <div style="padding:0 12px 12px">
-        <label for="akey">Logo download key</label><input id="akey" type="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="github_pat_...">
-        <p class="hint" style="margin-top:6px">Only needed if you were given a key. The frame uses it once, to download airline logos to its SD card.</p>
-      </div>
-    </details>
     <div>
       <label for="radius">Radar radius</label>
       <div class="rng"><input id="radius" type="range" min="5" max="50" step="5" value="50"><output id="radiusv" for="radius">50 mi</output></div>
@@ -231,7 +224,7 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
 
 <script>
 (function(){
-  var S={ssid:'',pw:'',pc:'',ak:'',lat:null,lon:null,radius:50,unit:'mi',head:0,flip:false,view:0,hl:3,rows:5,rain:true,h24:true};
+  var S={ssid:'',pw:'',pc:'',lat:null,lon:null,radius:50,unit:'mi',head:0,flip:false,view:0,hl:3,rows:5,rain:true,h24:true};
   var NETS=[];
   var $=function(id){return document.getElementById(id)};
   var NS='http://www.w3.org/2000/svg';
@@ -261,7 +254,6 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
 
   /* Location */
   $('pc').addEventListener('input',function(){S.pc=this.value.trim().toUpperCase();render()});
-  $('akey').addEventListener('input',function(){S.ak=this.value.trim()});
   $('lat').addEventListener('input',function(){var v=parseFloat(this.value);S.lat=isNaN(v)?null:v;render()});
   $('lon').addEventListener('input',function(){var v=parseFloat(this.value);S.lon=isNaN(v)?null:v;render()});
   $('radius').addEventListener('input',function(){S.radius=+this.value;render()});
@@ -371,7 +363,7 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
     var b=this,st=$('status'),manual=S.lat!==null&&S.lon!==null;
     if(!S.ssid){st.className='status';st.textContent='Pick your Wi-Fi network first (step 1).';return}
     if(!manual&&S.pc.length<5){st.className='status';st.textContent='Enter your postcode, or coordinates, in step 2.';return}
-    var body={ssid:S.ssid,pw:S.pw,postcode:S.pc,assetkey:S.ak,radius:S.radius,unit:S.unit,head:S.head,flip:S.flip,view:S.view,hl:S.hl,rows:S.rows,rain:S.rain,h24:S.h24};
+    var body={ssid:S.ssid,pw:S.pw,postcode:S.pc,radius:S.radius,unit:S.unit,head:S.head,flip:S.flip,view:S.view,hl:S.hl,rows:S.rows,rain:S.rain,h24:S.h24};
     if(manual){body.lat=S.lat;body.lon=S.lon}
     b.disabled=true;st.className='status';st.textContent='Saving…';
     fetch('/api/save',{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}).then(function(r){

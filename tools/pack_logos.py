@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Packs a folder of <ICAO>.lg airline logos into one file for the private assets repo.
 Format: 'FFLP', count u16, then count x [code 4 bytes NUL-padded, length u16, data]. The frame unpacks it to /logos/<code>.lg on its SD card.
-The logos are trademarked images, so the pack lives in a PRIVATE repo, never in this one.   Usage: pack_logos.py <logos dir> <out file>"""
+The pack is uploaded to the 'sdpack' release; the frame downloads it on first boot.   Usage: pack_logos.py <logos dir> <out file>"""
 import os, struct, sys
 src, out = sys.argv[1], sys.argv[2]
 files = sorted(f for f in os.listdir(src) if f.endswith(".lg") and len(f) <= 8)

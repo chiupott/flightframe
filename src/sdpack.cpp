@@ -43,14 +43,12 @@ static bool fetchOne(const PackFile& pf) {
   SD.remove(pf.path);
   return SD.rename(tmp.c_str(), pf.path);
 }
-// Airline logos: trademarked images, so they live in a PRIVATE repo (chiupott/flightframe-assets). The frame downloads one packed file with a
-// read-only key entered in the setup page, unpacks it to /logos/<ICAO>.lg, and leaves a marker so it only does this once.
-#define LOGOS_URL "https://raw.githubusercontent.com/" GH_OWNER "/flightframe-assets/main/logos.pack"
+// Airline logos: one packed file (tools/pack_logos.py) in the sdpack release; the frame unpacks it to /logos/<ICAO>.lg and leaves a marker so it only does this once.
+#define LOGOS_URL PACK_URL "logos.pack"
 static bool logosFetchAndUnpack() {
   WiFiClientSecure c; SET_CA(c);
   HTTPClient h; h.setTimeout(20000); h.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); h.setUserAgent("FlightFrame/" FW_VERSION);
   if (!h.begin(c, LOGOS_URL)) return false;
-  h.addHeader("Authorization", String("token ") + cfg.assetKey);
   int code = h.GET(); int len = h.getSize();
   Serial.printf("logos: http %d len %d\n", code, len);
   if (code != 200 || len < 16 || len > 2000000) { h.end(); return false; }
@@ -85,7 +83,7 @@ static bool logosFetchAndUnpack() {
 }
 int sdpackEnsure() {
   int missing = 0; for (auto& pf : FILES) if (!SD.exists(pf.path)) missing++;
-  bool needLogos = cfg.assetKey.length() && !SD.exists("/logos/.ok");
+  bool needLogos = !SD.exists("/logos/.ok");
   if (!missing && !needLogos) return 0;
   drawMessage("Setting up the SD card", needLogos ? "Downloading map, planes and logos..." : "Downloading map and planes...");
   int got = 0; for (auto& pf : FILES) if (!SD.exists(pf.path) && fetchOne(pf)) got++;

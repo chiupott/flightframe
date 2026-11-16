@@ -42,7 +42,6 @@
 
 struct Config {
   String ssid, pw, postcode;
-  String assetKey;         // read-only GitHub key for the private logo pack (set in the setup page; never in the repo)
   float lat = NAN, lon = NAN;
   float radiusMi = 50;     // radar radius in miles (always stored in miles; km users get a converted value)
   uint8_t rows = 5;
