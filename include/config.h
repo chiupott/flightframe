@@ -17,15 +17,28 @@
 #define MAX_AIRCRAFT       40
 #define TRAIL_KEEP_MS      (5UL*60UL*1000UL)
 
-// ---- Display pins: Waveshare-style ESP32 driver board (CHECK against the kit on arrival) ----
+// ---- Pins ----
+#if CONFIG_IDF_TARGET_ESP32C6 || defined(BOARD_SEENGREAT_C6)
+// Seengreat ESP32-C6 e-paper driver board (from its manual). The SD card shares the SPI bus with the panel.
+#define EPD_SCK 5
+#define EPD_MOSI 4
+#define EPD_CS 7
+#define EPD_DC 3
+#define EPD_RST 6
+#define EPD_BUSY 2
+#define SD_CS 20
+#define SD_MISO 19
+#else
+// Waveshare-style ESP32 driver board (unverified)
 #define EPD_SCK 13
 #define EPD_MOSI 14
 #define EPD_CS 15
 #define EPD_DC 27
 #define EPD_RST 26
 #define EPD_BUSY 25
-// SD card (logos) pins: CHECK on kit day
 #define SD_CS 5
+#define SD_MISO -1
+#endif
 
 struct Config {
   String ssid, pw, postcode;

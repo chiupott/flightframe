@@ -2,13 +2,20 @@
 #include "config.h"
 #include <Arduino.h>
 #include <HTTPClient.h>
+#include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <SD.h>
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_src_x509_crt_bundle_bin_start");
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3   // Arduino core 3.x (ESP32-C6) wants the bundle size too
+extern const uint8_t rootca_crt_bundle_end[] asm("_binary_src_x509_crt_bundle_bin_end");
+#define SET_CA(c) (c).setCACertBundle(rootca_crt_bundle_start, rootca_crt_bundle_end - rootca_crt_bundle_start)
+#else
+#define SET_CA(c) (c).setCACertBundle(rootca_crt_bundle_start)
+#endif
 // A GitHub Action rebuilds this file every 10 minutes from RainViewer radar tiles and uploads it to a rolling pre-release called "rain".
 #define RAIN_URL "https://github.com/" GH_OWNER "/" GH_REPO "/releases/download/rain/rain.bin"
 bool rainRefresh() {
-  WiFiClientSecure c; c.setCACertBundle(rootca_crt_bundle_start);
+  WiFiClientSecure c; SET_CA(c);
   HTTPClient h; h.setTimeout(20000); h.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); h.setUserAgent("FlightFrame/" FW_VERSION);
   if (!h.begin(c, RAIN_URL)) return false;
   int code = h.GET(); int len = h.getSize();

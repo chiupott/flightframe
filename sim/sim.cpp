@@ -19,6 +19,10 @@ extern void setup(); extern void loop();
 static std::string slurp(const std::string& p) { std::ifstream f(p); std::stringstream s; s << f.rdbuf(); return s.str(); }
 static int pollNo = 0; static std::string DIR_ = ".";
 bool wifiConnect(uint32_t) { return true; }
+bool httpsGetJson(const String& url, JsonDocument& doc, JsonDocument& filter, uint32_t) {
+  extern bool httpsGet(const String&, String&, uint32_t); String b; if (!httpsGet(url, b, 0)) return false;
+  return !deserializeJson(doc, b, DeserializationOption::Filter(filter));
+}
 bool httpsGet(const String& url, String& body, uint32_t) {
   std::string u = url.c_str();
   if (u.find("adsb.fi") != std::string::npos) {
@@ -36,7 +40,8 @@ bool httpsGet(const String& url, String& body, uint32_t) {
   return false;
 }
 bool storInit() { return true; }
-bool rainRefresh() { return false; }   // the real one downloads from GitHub
+bool rainRefresh() { return false; }
+int sdpackEnsure() { return 0; }   // the real one downloads from GitHub
 #include "clock.h"
 uint32_t clockNow() { return 0; } bool clockSet() { return true; } void clockInit(uint32_t) {}
 #include <ctime>

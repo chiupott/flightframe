@@ -10,14 +10,18 @@
 #include "ota.h"
 #include "storage.h"
 #include "rain.h"
+#include "sdpack.h"
+#include "diag.h"
 
 static uint32_t lastOta = 0, lastGood = 0, lastRain = 0; static bool markedGood = false;
+
+static bool sdOk = false;   // SD card mounted (retried in loop so a card can be pushed in later)
 
 void setup() {
   Serial.begin(115200);
   otaBootCheck();                                   // rolls back a bad update after 3 failed boots
   storeLoad();
-  drawInit(); storInit();
+  drawInit(); sdOk = storInit();
   if (bootCount() >= 3) {                           // 3 power-cycles in quick succession = reset
     storeWipe(); bootCountClear();
     drawMessage("Reset done", "Join Wi-Fi: " AP_NAME); portalRun();
@@ -33,12 +37,15 @@ void setup() {
 }
 
 void loop() {
-  static uint32_t t0 = 0; static bool booted = false;
+  static uint32_t t0 = 0; static bool booted = false, packTried = false;
   if (millis() > GOOD_BOOT_MS && !booted) { bootCountClear(); booted = true; }     // survived 5 s: not a reset attempt
   if (millis() - t0 < POLL_MS && t0) { delay(200); return; }
   t0 = millis();
   bool wifi = WiFi.status() == WL_CONNECTED;
   if (!wifi) wifi = wifiConnect(10000);
+  if (!sdOk) sdOk = storInit();
+  g_dSd = sdOk;
+  if (wifi && sdOk && !packTried) { packTried = true; g_dPack = sdpackEnsure(); }     // first boot with a blank card: fetch map + plane pictures once per boot
   Feed feed = Feed::None;
   if (wifi && adsbPoll()) {
     if (cfg.view == 0) for (uint8_t i = 0; i < nPlanes && i < cfg.rows; i++) routeLookup(planes[i]);   // only the rows we show

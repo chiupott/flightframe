@@ -300,7 +300,8 @@ static void drawWindow(Feed feed, bool wifiOk, const char* clock) {
 }
 
 #include "engview.h"
-void drawInit() { SPI.begin(EPD_SCK, -1, EPD_MOSI, EPD_CS); epd.init(115200, true, 2, false); epd.setRotation(0); }
+#include "diag.h"
+void drawInit() { SPI.begin(EPD_SCK, SD_MISO, EPD_MOSI, EPD_CS); epd.init(115200, true, 2, false); epd.setRotation(0); }
 void drawMessage(const char* l1, const char* l2) {
   epd.setFullWindow(); epd.firstPage();
   do { epd.fillScreen(PAPER); put(&Nico16, 40, 200, l1); put(&Nico14, 40, 232, l2); } while (epd.nextPage());
@@ -311,5 +312,9 @@ void drawScreen(Feed feed, bool wifiOk) {
   epd.firstPage();
   String clk = clockStr();
   if (cfg.view == 1) { winLoad(); if (!wp.ok) { drawMessage("Window view needs its terrain file", "Copy /window/terrain.bin to the SD card"); return; } }
-  do { epd.fillScreen(PAPER); if (cfg.view == 1) drawWindow(feed, wifiOk, clk.c_str()); else if (cfg.view == 2) drawEngines(clk.c_str()); else { drawRadar(feed, wifiOk, clk.c_str()); drawList(clk.c_str()); } } while (epd.nextPage());
+  do { epd.fillScreen(PAPER); if (cfg.view == 1) drawWindow(feed, wifiOk, clk.c_str()); else if (cfg.view == 2) drawEngines(clk.c_str()); else { drawRadar(feed, wifiOk, clk.c_str()); drawList(clk.c_str()); }
+#ifdef FF_DIAG   // build with -DFF_DIAG to print a status line (SD / download / feed / plane count) in the corner
+    if (cfg.view != 2) { char dg[48]; snprintf(dg, sizeof dg, "sd:%d pack:%d http:%d n:%d", g_dSd, g_dPack, g_dHttp, (int)nPlanes); epd.setFont(nullptr); epd.setTextSize(1); epd.setTextColor(INK); epd.fillRect(626, 466, 170, 12, PAPER); epd.setCursor(632, 468); epd.print(dg); }
+#endif
+  } while (epd.nextPage());
 }

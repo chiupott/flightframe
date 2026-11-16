@@ -2,6 +2,10 @@
 
 ESP32 + 7.5" 800x480 e-paper. Shows aircraft near a location on a radar plus a list of the nearest flights.
 
+## Hardware (what it runs on now)
+Seengreat ESP32-C6 e-paper driver board + 7.5 inch 800x480 black/white panel (UC8179 class, `GxEPD2_750_T7`) + microSD. Pins are in `include/config.h` (panel: SCK 5, MOSI 4, CS 7, DC 3, RST 6, BUSY 2; SD shares the bus: MISO 19, CS 20). Build with `pio run -e esp32c6` (needs Python 3.10+, the pioarduino platform). Add `-DFF_DIAG` to the build flags to print a small status line in the corner of the radar screen.
+Blank SD card: format FAT32, insert, power on. On first boot the frame downloads the map and plane pictures itself from the `sdpack` release (not the logos or the window-view skyline, see below). Some cards fail to write in this slot; if the first boot logs write errors, try another card.
+
 ## Status
 - Compiles and links with PlatformIO (ESP32, about 1.27 MB, 64% of an update slot). **Not yet run on hardware.**
 - The renderer is the real design: NicoClean fonts, top-down aircraft sprites (rotated at draw time), coastline, rain dots with a dotted edge, trails, labels that avoid each other, overlays, status icons, list rows with airline logos. It runs in the host simulator and matches the design boards.

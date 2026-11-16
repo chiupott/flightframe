@@ -1,7 +1,7 @@
 #include "storage.h"
 #include "config.h"
 #include <SD.h>
-bool storInit() { return SD.begin(SD_CS); }
+bool storInit() { return SD.begin(SD_CS, SPI, 4000000); }
 uint8_t* storLoad(const char* path, size_t& len) {
   File f = SD.open(path); if (!f) return nullptr;
   len = f.size(); uint8_t* b = (uint8_t*)malloc(len ? len : 1);

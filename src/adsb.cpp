@@ -1,4 +1,5 @@
 #include "adsb.h"
+#include "diag.h"
 #include "net.h"
 #include "store.h"
 #include "airline_iata.h"
@@ -50,8 +51,9 @@ bool adsbPoll() {
   const float rMi = cfg.view == 1 ? 92.0f : cfg.radiusMi;                // window view: planes out to about 80 nm
   float nm = rMi * 0.868976f;
   String url = "https://opendata.adsb.fi/api/v3/lat/" + String(cfg.lat, 4) + "/lon/" + String(cfg.lon, 4) + "/dist/" + String(nm, 0);
-  String body; if (!httpsGet(url, body, 15000)) return false;
-  JsonDocument d; if (deserializeJson(d, body)) return false;
+  // The London feed is ~85 KB: stream it through a filter that keeps only the fields we use.
+  JsonDocument filter; for (const char* k : {"hex", "flight", "lat", "lon", "alt_baro", "gs", "track", "t", "r", "category"}) { filter["ac"][0][k] = true; filter["aircraft"][0][k] = true; }
+  JsonDocument d; if (!httpsGetJson(url, d, filter, 20000)) return false;
   JsonArray ac = d["ac"].is<JsonArray>() ? d["ac"].as<JsonArray>() : d["aircraft"].as<JsonArray>();
   nPlanes = 0;
   static Aircraft cand;

@@ -6,6 +6,12 @@
 #include <HTTPUpdate.h>
 #include <esp_ota_ops.h>
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_src_x509_crt_bundle_bin_start");
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3   // Arduino core 3.x (ESP32-C6) wants the bundle size too
+extern const uint8_t rootca_crt_bundle_end[] asm("_binary_src_x509_crt_bundle_bin_end");
+#define SET_CA(c) (c).setCACertBundle(rootca_crt_bundle_start, rootca_crt_bundle_end - rootca_crt_bundle_start)
+#else
+#define SET_CA(c) (c).setCACertBundle(rootca_crt_bundle_start)
+#endif
 
 void otaBootCheck() {
   if (prefGet("probation") != "1") return;
@@ -35,7 +41,7 @@ bool otaCheckAndUpdate() {
   for (JsonObject a : d["assets"].as<JsonArray>()) if (String(a["name"] | "") == GH_ASSET) url = String(a["browser_download_url"] | "");
   if (!url.length()) return false;
   prefSet("pendingver", tag); prefSet("probation", "1"); prefSet("tries", "0");
-  WiFiClientSecure c; c.setCACertBundle(rootca_crt_bundle_start);
+  WiFiClientSecure c; SET_CA(c);
   httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   httpUpdate.rebootOnUpdate(true);
   t_httpUpdate_return r = httpUpdate.update(c, url);
