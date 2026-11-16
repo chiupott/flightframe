@@ -12,6 +12,7 @@
 #include <SPI.h>
 #include <GxEPD2_BW.h>
 #include "clock.h"
+#include "terrain.h"
 #include <vector>
 #include <algorithm>
 #include "fonts/Nico14.h"
@@ -308,6 +309,10 @@ void drawMessage(const char* l1, const char* l2) {
 }
 void drawForceFull() { partials = 0; }   // next redraw is a full (flashing) refresh, e.g. after switching view
 void drawScreen(Feed feed, bool wifiOk) {
+  if (cfg.view == 1 && !terrainReady()) {                                   // no skyline for this location + facing yet: make it (needs Wi-Fi + SD)
+    static uint32_t lastTry = 0;
+    if (wifiOk && (!lastTry || millis() - lastTry > 30UL * 60UL * 1000UL)) { lastTry = millis(); terrainGenerate(); wp.tried = false; wp.ok = false; }
+  }
   bool full = (partials++ % FULL_REFRESH_EVERY) == 0;
   if (full) epd.setFullWindow(); else epd.setPartialWindow(0, 0, 800, 480);
   epd.firstPage();
