@@ -39,6 +39,9 @@ void setup() {
     if (WiFi.status() == WL_CONNECTED) { cfg.ssid = WiFi.SSID(); cfg.pw = WiFi.psk(); cfg.postcode = "M90 1QX"; cfg.lat = 53.3537f; cfg.lon = -2.2750f; cfg.view = 1; storeSave(); }
   }
 #endif
+#ifdef FF_DEV_LOC   // developer test: set the frame location from build flags (DEV_PC postcode, DEV_HEAD facing), never stored in the repo; coordinates come from the postcode lookup
+  if (cfg.postcode != DEV_PC) { cfg.postcode = DEV_PC; cfg.lat = NAN; cfg.lon = NAN; cfg.heading = DEV_HEAD; cfg.view = 1; cfg.bw = false; storeSave(); }
+#endif
   drawInit(); sdOk = storInit();
 #ifdef FF_SWATCH
   drawSwatches(); for (;;) delay(1000);
