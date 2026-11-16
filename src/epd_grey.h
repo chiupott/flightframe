@@ -34,10 +34,10 @@ class EpdGrey : public Adafruit_GFX {
     switch (getRotation()) { case 1: { int16_t t = x; x = 800 - 1 - y; y = t; break; } case 2: x = 800 - 1 - x; y = 480 - 1 - y; break; case 3: { int16_t t = x; x = y; y = 480 - 1 - t; break; } }
     if (x < 0 || y < 0 || x >= 800 || y >= 480 || !p10) return;
     uint8_t lvl = level(c); size_t i = (size_t)y * 100 + (x >> 3); uint8_t m = 0x80 >> (x & 7);
-    if (lvl == 0 || lvl == 1) p10[i] |= m; else p10[i] &= ~m;      // plane 0x10: black, dark grey (checked on the real panel: this plane alone shows as the darker grey)
-    if (lvl == 0 || lvl == 2) p13[i] |= m; else p13[i] &= ~m;      // plane 0x13: black, light grey
+    if (lvl == 0 || lvl == 2) p10[i] |= m; else p10[i] &= ~m;      // plane 0x10: black, light grey (confirmed with the test card on the real panel)
+    if (lvl == 0 || lvl == 1) p13[i] |= m; else p13[i] &= ~m;      // plane 0x13: black, dark grey
   }
-  void fillScreen(uint16_t c) override { if (!p10) return; uint8_t l = level(c); memset(p10, (l == 0 || l == 1) ? 0xFF : 0, 48000); memset(p13, (l == 0 || l == 2) ? 0xFF : 0, 48000); }
+  void fillScreen(uint16_t c) override { if (!p10) return; uint8_t l = level(c); memset(p10, (l == 0 || l == 2) ? 0xFF : 0, 48000); memset(p13, (l == 0 || l == 1) ? 0xFF : 0, 48000); }
  private:
   uint8_t *p10 = nullptr, *p13 = nullptr; uint32_t lastHash = 0; bool shown = false;
   static uint8_t level(uint16_t c) {                 // 0 black, 1 dark grey, 2 light grey, 3 white

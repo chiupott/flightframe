@@ -33,6 +33,9 @@ void setup() {
   otaBootCheck();                                   // rolls back a bad update after 3 failed boots
   storeLoad();
   drawInit(); sdOk = storInit();
+#ifdef FF_SWATCH
+  drawSwatches(); for (;;) delay(1000);
+#endif
   if (bootCount() >= 3) {                           // 3 power-cycles in quick succession = reset
     storeWipe(); bootCountClear();
     drawMessage("Reset done", "Join Wi-Fi: " AP_NAME); portalRun();

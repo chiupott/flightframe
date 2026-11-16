@@ -322,6 +322,16 @@ void drawMessage(const char* l1, const char* l2) {
   epd.setFullWindow(); epd.firstPage();
   do { epd.fillScreen(PAPER); put(&Nico16, 40, 200, l1); put(&Nico14, 40, 232, l2); } while (epd.nextPage());
 }
+#ifdef FF_SWATCH
+void drawSwatches() {   // test card: which grey is which on this panel
+  epd.setFullWindow(); epd.firstPage();
+  do { epd.fillScreen(PAPER);
+    const uint16_t C[4] = {PAPER, GREY_L, GREY_D, INK}; const char* N[4] = {"WHITE", "GREY_L", "GREY_D", "BLACK"};
+    for (int i = 0; i < 4; i++) { epd.fillRect(20 + i * 195, 40, 170, 300, C[i]); epd.drawRect(20 + i * 195, 40, 170, 300, INK); put(&Nico16, 30 + i * 195, 380, N[i]); }
+    epd.fillRect(20, 400, 760, 60, GREY_L); epd.fillRect(20 + 380, 410, 380, 40, GREY_D);
+  } while (epd.nextPage());
+}
+#endif
 void drawForceFull() { partials = 0; }   // next redraw is a full (flashing) refresh, e.g. after switching view
 void drawScreen(Feed feed, bool wifiOk) {
   bool full = (partials++ % FULL_REFRESH_EVERY) == 0;
