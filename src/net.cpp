@@ -38,17 +38,23 @@ bool httpsGetJson(const String& url, JsonDocument& doc, JsonDocument& filter, ui
   int code = h.GET(); g_dHttp = code;
   bool ok = false;
   if (code == 200) {
-    // ArduinoJson cannot read straight from a network stream (an empty buffer looks like the end), so read the body into one
-    // buffer first, then parse it through the filter. HTTP/1.0 = no chunking, ends when the server closes.
-    size_t cap = 96 * 1024, total = 0; char* buf = (char*)malloc(cap);
-    WiFiClient* sp = h.getStreamPtr(); uint32_t last = millis();
-    while (buf && (h.connected() || sp->available()) && millis() - last < timeoutMs) {
-      if (total + 1024 > cap) { if (cap >= 160 * 1024) break; char* nb = (char*)realloc(buf, cap + 32 * 1024); if (!nb) break; buf = nb; cap += 32 * 1024; }
-      int n = sp->readBytes(buf + total, 1024);
-      if (n > 0) { total += n; last = millis(); } else delay(2);
-    }
-    if (buf) { DeserializationError err = deserializeJson(doc, buf, total, DeserializationOption::Filter(filter)); ok = !err; if (err) g_dHttp = -1000 - (int)err.code(); }
-    free(buf);
+    // Parse straight from the socket through the filter: no big receive buffer (the grey build has little spare RAM).
+    // ArduinoJson treats a momentarily empty socket as end-of-input, so this reader waits for data instead. HTTP/1.0 = no chunking.
+    struct NetReader {
+      WiFiClient& c; uint32_t to;
+      int read() { uint8_t b; return readBytes((char*)&b, 1) == 1 ? b : -1; }
+      size_t readBytes(char* buf, size_t n) {
+        size_t got = 0;
+        while (got < n) {
+          uint32_t t = millis();
+          while (!c.available()) { if (!c.connected() || millis() - t > to) return got; delay(1); }
+          int k = c.read((uint8_t*)buf + got, n - got); if (k > 0) got += k;
+        }
+        return got;
+      }
+    } rd{*h.getStreamPtr(), timeoutMs};
+    DeserializationError err = deserializeJson(doc, rd, DeserializationOption::Filter(filter));
+    ok = !err; if (err) g_dHttp = -1000 - (int)err.code();
   }
   h.end();
   return ok;
