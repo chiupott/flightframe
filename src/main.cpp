@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_system.h>
 #include "config.h"
 #include "store.h"
 #include "net.h"
@@ -32,11 +33,18 @@ void setup() {
   pinMode(BTN_PIN, INPUT_PULLUP);
   otaBootCheck();                                   // rolls back a bad update after 3 failed boots
   storeLoad();
+#ifdef FF_DEV_RESTORE   // developer recovery after an accidental settings wipe: reuse the Wi-Fi the chip itself remembers, test location Manchester Airport
+  if (!cfg.ssid.length()) {
+    WiFi.mode(WIFI_STA); WiFi.begin(); uint32_t t = millis(); while (WiFi.status() != WL_CONNECTED && millis() - t < 20000) delay(250);
+    if (WiFi.status() == WL_CONNECTED) { cfg.ssid = WiFi.SSID(); cfg.pw = WiFi.psk(); cfg.postcode = "M90 1QX"; cfg.lat = 53.3537f; cfg.lon = -2.2750f; cfg.view = 1; storeSave(); }
+  }
+#endif
   drawInit(); sdOk = storInit();
 #ifdef FF_SWATCH
   drawSwatches(); for (;;) delay(1000);
 #endif
-  if (bootCount() >= 3) {                           // 3 power-cycles in quick succession = reset
+  esp_reset_reason_t rr = esp_reset_reason(); bool manual = rr == ESP_RST_POWERON || rr == ESP_RST_EXT || rr == ESP_RST_BROWNOUT;   // flashing / USB resets must not count towards the 3-reset factory reset
+  if (manual && bootCount() >= 3) {                           // 3 power-cycles in quick succession = reset
     storeWipe(); bootCountClear();
     drawMessage("Reset done", "Join Wi-Fi: " AP_NAME); portalRun();
   }

@@ -7,6 +7,7 @@
 #include "fonts/Nico13.h"
 #include "fonts/Nico15.h"
 #include "fonts/Nico17.h"
+#include "fonts/BigNum.h"
 
 #ifdef FF_GREY
 static uint16_t engCol(uint8_t p) {                                         // grey build: lanes are solid greys instead of hatching
@@ -75,6 +76,25 @@ static int engBig(const GFXfont* f, int x, int y, const String& s, int sc) {    
   for (int j = y0; j <= y1; j++) for (int i = x0; i <= x1; i++) if (cv.getPixel(i, j)) epd.fillRect(x + (i - x0) * sc, y + (j - y0) * sc, sc, sc, INK);
   return (y1 - y0 + 1) * sc;
 }
+// the people total in big anti-aliased digits (4 grey levels; black-and-white build keeps the two darker levels); returns the height used
+static int bigNum(int x, int top, const String& s, int maxW) {
+  static const char CHS[] = "0123456789,.";
+  auto width = [&](const BigFont& f) { int w = 0; for (size_t i = 0; i < s.length(); i++) { const char* p = strchr(CHS, s[i]); if (p && *p) w += f.g[p - CHS].adv; } return w; };
+  const BigFont& f = width(BN0) <= maxW ? BN0 : BN1; int pen = 0, base = top + f.capH;
+  for (size_t i = 0; i < s.length(); i++) {
+    const char* p = strchr(CHS, s[i]); if (!p || !*p) continue; const BGlyph& g = f.g[p - CHS]; int idx = 0;
+    for (int r = 0; r < g.h; r++) for (int c = 0; c < g.w; c++, idx++) {
+      int q = (f.bits[g.off + (idx >> 2)] >> (6 - 2 * (idx & 3))) & 3; if (!q) continue;
+#ifdef FF_GREY
+      epd.drawPixel(x + pen + g.xo + c, base + g.yo + r, q == 3 ? INK : q == 2 ? GREY_D : GREY_L);
+#else
+      if (q >= 2) epd.drawPixel(x + pen + g.xo + c, base + g.yo + r, INK);
+#endif
+    }
+    pen += g.adv;
+  }
+  return f.capH;
+}
 static void putRight(const GFXfont* f, int xr, int y, const String& s, uint16_t col = INK) { put(f, xr - tw(f, s), y, s, col); }
 
 static void drawEngines(const char* clock) {
@@ -141,7 +161,7 @@ static void drawEngines(const char* clock) {
       put(&Nico14, x + 6, yy, EMS[ord[i]].name); putRight(&Nico14, x + 101, yy, String("x") + T.emEng[ord[i]]); putRight(&Nico14, x + cw - 3, yy, commas(T.emPeople[ord[i]])); }
   }
   epd.fillRect(640, 326, 3, 151, INK);
-  int bh = engBig(&Nico16, 656, 352, commas(T.people), 3);
+  int bh = bigNum(656, 352, commas(T.people), 134);
   put(&Nico14, 656, 352 + bh + 19, "people in the air");
   String th = T.thrustK >= 1000 ? String(T.thrustK / 1000.0f, 1) + " million lbf" : commas(T.thrustK * 1000) + " lbf";
   put(&Nico14, 656, 352 + bh + 41, th); put(&Nico14, 656, 352 + bh + 59, "of thrust overhead");

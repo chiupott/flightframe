@@ -59,12 +59,13 @@ static void world(float lat, float lon, float& X, float& Y) {
 }
 
 // ---- random access to the elevation mosaic with a small block cache ----
-static File demIn; struct Blk { int32_t id = -1; uint8_t b[512]; }; static Blk cache[16];
+static File demIn; static const int NL = 512; static int32_t ctag[NL]; static uint8_t* cdat = nullptr;   // 512 lines x 64 bytes: neighbouring rays reuse each other's reads
 static int16_t demAt(int ix, int iy) {
   int tx = ix >> 8, ty = iy >> 8; if (ix < 0 || iy < 0 || tx >= nx || ty >= ny) return 0;
-  uint32_t off = (uint32_t)(ty * nx + tx) * 131072UL + ((uint32_t)((iy & 255) << 8) + (ix & 255)) * 2; uint32_t id = off >> 9; Blk& c = cache[id & 15];
-  if (c.id != (int32_t)id) { demIn.seek((uint32_t)id << 9); demIn.read(c.b, 512); c.id = id; }
-  return (int16_t)(c.b[off & 511] | (c.b[(off & 511) + 1] << 8));
+  uint32_t off = (uint32_t)(ty * nx + tx) * 131072UL + ((uint32_t)((iy & 255) << 8) + (ix & 255)) * 2; uint32_t id = off >> 6, slot = (id * 2654435761u) >> 23 & (NL - 1);
+  uint8_t* ln = cdat + slot * 64;
+  if (ctag[slot] != (int32_t)id) { demIn.seek(id << 6); demIn.read(ln, 64); ctag[slot] = id; }
+  return (int16_t)(ln[off & 63] | (ln[(off & 63) + 1] << 8));
 }
 static float elev(float lat, float lon) { float X, Y; world(lat, lon, X, Y); int16_t h = demAt((int)lroundf(X - tx0 * 256), (int)lroundf(Y - ty0 * 256)); return h > 0 ? h : 0; }
 
@@ -116,7 +117,7 @@ bool terrainGenerate() {
   }
   demOut.close(); SD.remove(TMP);
   // 3. ray-march + shade
-  demIn = SD.open(DEM); if (!demIn) return false; for (auto& c : cache) c.id = -1;
+  demIn = SD.open(DEM); if (!demIn) return false; cdat = (uint8_t*)malloc(NL * 64); if (!cdat) { demIn.close(); return false; } for (int i = 0; i < NL; i++) ctag[i] = -1;
   GFXcanvas1* cv = new GFXcanvas1(W, H); Col* cols = new Col[2];
   if (!cv || !cv->getBuffer() || !cols) { demIn.close(); delete cv; delete[] cols; return false; }
   cv->fillScreen(0);
@@ -140,9 +141,9 @@ bool terrainGenerate() {
     shadeColumn(*cv, x, c, havePrev ? &cols[cur ^ 1] : nullptr);
     if (x + 1 < W) shadeColumn(*cv, x + 1, c, &c);
     havePrev = true; cur ^= 1;
-    if (x % 200 == 0) Serial.printf("terrain: column %d\n", x);
+    if (x % 100 == 0) Serial.printf("terrain: column %d\n", x);
   }
-  delete[] dist; delete[] cols; demIn.close(); SD.remove(DEM);
+  delete[] dist; delete[] cols; demIn.close(); free(cdat); cdat = nullptr; SD.remove(DEM);
   // 4. guides + compass strip (as in tools/window_view.py)
   static const int GUIDES[6] = {30, 20, 10, 5, 0, -5};
   for (int g = 0; g < 6; g++) { int y = (int)vy(GUIDES[g]); for (int x = 0; x < W; x += GUIDES[g] == 0 ? 6 : 10) cv->drawPixel(x, y, 1);
