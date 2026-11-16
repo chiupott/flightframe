@@ -8,6 +8,20 @@
 #include "fonts/Nico15.h"
 #include "fonts/Nico17.h"
 
+#ifdef FF_GREY
+static uint16_t engCol(uint8_t p) {                                         // grey build: lanes are solid greys instead of hatching
+  static const uint16_t ROW[9] = {GREY_D, GREY_L, INK, GREY_D, GREY_L, GREY_D, GREY_L, GREY_D, GREY_L};
+  if (p >= 20) return ROW[(p - 20) % 9];
+  return p == 0 ? INK : p == 7 ? GREY_L : GREY_D;
+}
+#endif
+static uint8_t rowPat(int i) { static const uint8_t PATS[9] = {1, 2, 0, 8, 9, 3, 5, 4, 6};
+#ifdef FF_GREY
+  return 20 + i;
+#else
+  return PATS[i];
+#endif
+}
 static bool engPat(uint8_t p, int x, int y) {                               // hatch tiles for the lanes
   switch (p) {
     case 0: return true;                          case 1: return (x + y) % 5 < 2;               case 2: return (((x - y) % 5) + 5) % 5 < 2;
@@ -25,7 +39,11 @@ static void engPoly(const float* px, const float* py, int n, uint8_t pat) {     
     for (int a = 0; a + 1 < k; a += 2) {
       int x0 = max(0, (int)ceilf(xs[a])), x1 = min(799, (int)floorf(xs[a + 1])); if (x1 < x0) continue;
       epd.drawFastHLine(x0, y, x1 - x0 + 1, PAPER);
+#ifdef FF_GREY
+      epd.drawFastHLine(x0, y, x1 - x0 + 1, engCol(pat));
+#else
       if (pat == 0) epd.drawFastHLine(x0, y, x1 - x0 + 1, INK); else for (int x = x0; x <= x1; x++) if (engPat(pat, x, y)) epd.drawPixel(x, y, INK);
+#endif
     }
   }
   for (int i = 0; i < n; i++) { int j = (i + 1) % n; bool flat = fabsf(px[j] - px[i]) >= fabsf(py[j] - py[i]);
@@ -68,10 +86,9 @@ static void drawEngines(const char* clock) {
   struct Row { const char* name; uint16_t planes, eng; uint8_t pat; };
   Row rows[9]; int nr = 0; { uint8_t ord[N_FAMS]; int nf = 0; for (uint8_t f = 0; f < N_FAMS; f++) if (T.famPlanes[f]) ord[nf++] = f;
     std::sort(ord, ord + nf, [&](uint8_t a, uint8_t b) { return T.famEng[a] != T.famEng[b] ? T.famEng[a] > T.famEng[b] : a < b; });
-    static const uint8_t PATS[9] = {1, 2, 0, 8, 9, 3, 5, 4, 6};
     for (int i = 0; i < nf && nr < 9; i++) {
       if (nf > 9 && nr == 8) { Row o{"Other", 0, 0, 7}; for (int j = 8; j < nf; j++) { o.planes += T.famPlanes[ord[j]]; o.eng += T.famEng[ord[j]]; } rows[nr++] = o; break; }
-      rows[nr++] = Row{FAM_NAME[ord[i]], T.famPlanes[ord[i]], T.famEng[ord[i]], PATS[nr]};
+      rows[nr++] = Row{FAM_NAME[ord[i]], T.famPlanes[ord[i]], T.famEng[ord[i]], rowPat(nr)};
     } }
   uint8_t mk[N_MAKERS]; int nm = 0; for (uint8_t m = 0; m < N_MAKERS; m++) if (T.makerEng[m]) mk[nm++] = m;
   const float tot = T.engines;

@@ -9,7 +9,11 @@
 #define PORTAL_IP  "192.168.4.1"
 
 // ---- Timing ----
+#ifdef FF_GREY
+#define POLL_MS            60000UL      // grey redraws flash the whole screen, so once a minute
+#else
 #define POLL_MS            30000UL      // plane poll + redraw (adsb.fi limit is 1 req/s, we are far below)
+#endif
 #define OTA_CHECK_MS       (6UL*3600UL*1000UL)
 #define FULL_REFRESH_EVERY 12           // partial refreshes between full ones
 #define GOOD_BOOT_MS       5000UL       // uptime after which the 3x power-cycle counter resets

@@ -29,6 +29,10 @@ static GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> epd(GxEPD2_750_T7(EPD_CS,
 static uint8_t partials = 0;
 #define INK GxEPD_BLACK
 #define PAPER GxEPD_WHITE
+#ifndef FF_GREY
+#define GREY_L INK    // black-and-white build: greys fall back to black
+#define GREY_D INK
+#endif
 
 // ---- text helpers: NicoClean pixel fonts; UTF-8 arrows etc. map to the font's spare slots ----
 static String fx(const String& s) { String o; for (size_t i = 0; i < s.length(); i++) {
@@ -38,9 +42,9 @@ static String fx(const String& s) { String o; for (size_t i = 0; i < s.length();
     o += (char)c; } return o; }
 static int tw(const GFXfont* f, const String& s) { epd.setTextSize(1); epd.setFont(f); int16_t x1, y1; uint16_t w, h; epd.getTextBounds(fx(s), 0, 0, &x1, &y1, &w, &h); return x1 + w; }
 static int put(const GFXfont* f, int x, int y, const String& s, uint16_t col = INK) { epd.setTextSize(1); epd.setFont(f); epd.setTextColor(col); epd.setCursor(x, y); epd.print(fx(s)); return x + tw(f, s); }
-static void putHalo(const GFXfont* f, int x, int y, const String& s, int r) {            // paper outline so text stays readable over the map
+static void putHalo(const GFXfont* f, int x, int y, const String& s, int r, uint16_t col = INK) {            // paper outline so text stays readable over the map
   for (int dy = -r; dy <= r; dy++) for (int dx = -r; dx <= r; dx++) if (dx || dy) { if (abs(dx) + abs(dy) > r + 1) continue; put(f, x + dx, y + dy, s, PAPER); }
-  put(f, x, y, s);
+  put(f, x, y, s, col);
 }
 static void hline(int x, int y, int w, int th) { epd.fillRect(x, y, w, th, INK); }
 static void box(int x, int y, int w, int h) { epd.fillRect(x, y, w, h, PAPER); epd.drawRect(x, y, w, h, INK); epd.drawRect(x + 1, y + 1, w - 2, h - 2, INK); }
@@ -69,10 +73,10 @@ static void drawList(const char* clock) {
     if (i < nPlanes) {
       const Aircraft& a = planes[i];
       int x = put(&Nico16, LX + 15, top + 22, a.routeKnown ? String(a.from) + " \xE2\x86\x92 " + a.to : String("Route unknown"));
-      put(&Nico14, x + 6, top + 22, String("(") + String(dU(a.distMi), 1) + " " + uName() + ")");
+      put(&Nico14, x + 6, top + 22, String("(") + String(dU(a.distMi), 1) + " " + uName() + ")", GREY_D);
       drawLogo(a.cs, 800 - 12 - 44, top + 22);
       const Sprite& sp = spriteFor(a.type, a.cat);
-      int x2 = put(&Nico14, LX + 15, top + 50, String(a.fn[0] ? a.fn : a.hex) + " " + a.type);
+      int x2 = put(&Nico14, LX + 15, top + 50, String(a.fn[0] ? a.fn : a.hex)); x2 = put(&Nico14, x2 + 8, top + 50, a.type, GREY_D);   // flight number black, aircraft type grey
       drawSprite(epd, x2 + 6 + (int)(sp.side * 0.75f) / 2 + 2, top + 44, 90, sp, 0.75f);   // row icon: nose right, centred on the callsign line
       String alt = String((long)a.alt); if (a.alt >= 1000) alt = String((long)(a.alt / 1000)) + "," + (a.alt % 1000 < 100 ? "0" : "") + (a.alt % 1000 < 10 ? "0" : "") + String((long)(a.alt % 1000));
       put(&Nico14, LX + 15, top + 77, alt + " ft \xC2\xB7 " + String((int)a.gs) + " kt \xC2\xB7 " + a.reg);
@@ -84,6 +88,10 @@ static void drawList(const char* clock) {
 // ---- radar ----
 static void ring(int r) {                                                    // dotted ring: 3 on / 5 off, 2 px, paper halo
   float circ = 2 * PI * r;
+#ifdef FF_GREY
+  for (float s = 0; s < circ; s += 1) { if (((int)s % 8) >= 4) continue; float a = s / r; epd.fillRect(VCX + (int)lroundf(r * sinf(a)) - 1, VCY - (int)lroundf(r * cosf(a)) - 1, 3, 3, GREY_D); }   // grey dots, no halo
+  return;
+#endif
   for (int pass = 0; pass < 2; pass++) for (float s = 0; s < circ; s += 1) {
     if (pass == 1 && ((int)s % 8) >= 3) continue;
     float a = s / r; int x = VCX + (int)lroundf(r * sinf(a)), y = VCY - (int)lroundf(r * cosf(a));
@@ -99,7 +107,7 @@ static void drawTrail(const Aircraft& a, float x, float y) {
   for (int k = t->n - 1; k >= 0 && len < 78; k--) { viewProj(t->lat[k], t->lon[k], px[n], py[n]); len += hypotf(px[n] - px[n - 1], py[n] - py[n - 1]); n++; }
   for (int pass = 0; pass < 2; pass++) for (int i = 0; i + 1 < n; i++) {
     if (pass == 0) { for (int dy = -2; dy <= 2; dy++) for (int dx = -2; dx <= 2; dx++) if (abs(dx) + abs(dy) <= 3) epd.drawLine(px[i] + dx, py[i] + dy, px[i + 1] + dx, py[i + 1] + dy, PAPER); }
-    else { epd.drawLine(px[i], py[i], px[i + 1], py[i + 1], INK); epd.drawLine(px[i] + 1, py[i], px[i + 1] + 1, py[i + 1], INK); epd.drawLine(px[i], py[i] + 1, px[i + 1], py[i + 1] + 1, INK); }
+    else { epd.drawLine(px[i], py[i], px[i + 1], py[i + 1], GREY_L); epd.drawLine(px[i] + 1, py[i], px[i + 1] + 1, py[i + 1], GREY_L); epd.drawLine(px[i], py[i] + 1, px[i + 1], py[i + 1] + 1, GREY_L); }
   }
 }
 static void drawRadar(Feed feed, bool wifiOk, const char* clock) {
@@ -149,10 +157,10 @@ static void drawRadar(Feed feed, bool wifiOk, const char* clock) {
     }
     if (placed || pick >= 0) boxes.push_back(ch.b);
     int dx = 0; { int w = ch.b.x1 - ch.b.x0 - 4; if (ch.x0 + w > 477) dx = 477 - (int)(ch.x0 + w); if (ch.x0 + dx < 3) dx = 3 - (int)ch.x0; }   // last resort: shift inside the radar
-    auto line = [&](const GFXfont* f, int yy, const String& s) { int sw = tw(f, s); int xx = ch.anc == 0 ? (int)ch.x0 : ch.anc == 1 ? (int)(ch.lx - sw) : (int)(ch.lx - sw / 2.0f); putHalo(f, xx + dx, yy, s, 2); };
+    auto line = [&](const GFXfont* f, int yy, const String& s, uint16_t col = INK) { int sw = tw(f, s); int xx = ch.anc == 0 ? (int)ch.x0 : ch.anc == 1 ? (int)(ch.lx - sw) : (int)(ch.lx - sw / 2.0f); putHalo(f, xx + dx, yy, s, 2, col); };
     int ly = (int)ch.ly;
     line(&Nico14, ly, t1);
-    if (lines == 3) { line(&NicoItalic14, ly + 14, t3); line(&Nico14, ly + 28, t2); }
+    if (lines == 3) { line(&NicoItalic14, ly + 14, t3, GREY_D); line(&Nico14, ly + 28, t2); }
     else if (lines == 2) line(&Nico14, ly + 14, t2);
   }
 
