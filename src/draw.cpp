@@ -10,14 +10,22 @@
 #include <ctype.h>
 #include "status_data.h"
 #include <SPI.h>
+#ifdef FF_GREY
+#include "epd_grey.h"
+#else
 #include <GxEPD2_BW.h>
+#endif
 #include "clock.h"
 #include <vector>
 #include <algorithm>
 #include "fonts/Nico14.h"
 #include "fonts/Nico16.h"
 #include "fonts/NicoItalic14.h"
+#ifdef FF_GREY
+static EpdGrey epd;                                                                                    // 4 grey levels, full-screen flash every redraw
+#else
 static GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> epd(GxEPD2_750_T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));   // full 48 KB frame buffer, one page
+#endif
 static uint8_t partials = 0;
 #define INK GxEPD_BLACK
 #define PAPER GxEPD_WHITE

@@ -8,6 +8,10 @@
 #include <algorithm>
 #include <math.h>
 #include <string.h>
+#ifndef GREY_L
+#define GREY_L 0xAD55   // light grey (sea)
+#define GREY_D 0x528A   // dark grey (rain)
+#endif
 #define INK 0x0000
 #define PAPER 0xFFFF
 struct Edge { float x0, y0, x1, y1; };
@@ -144,6 +148,9 @@ static void drawRain(Adafruit_GFX& g) {
     for (int j = 0; j < GN; j++) for (int i = 0; i < GN; i++) H[j][i] = (G[j][max(i - 1, 0)] + 2 * G[j][i] + G[j][min(i + 1, GN - 1)] + 2) / 4;
     for (int j = 0; j < GN; j++) for (int i = 0; i < GN; i++) G[j][i] = (H[max(j - 1, 0)][i] + 2 * H[j][i] + H[min(j + 1, GN - 1)][i] + 2) / 4;
   }
+#ifdef FF_GREY
+  for (int j = 0; j < GN; j++) for (int i = 0; i < GN; i++) if (G[j][i] > 127) g.fillRect(i * CELL, j * CELL, CELL, CELL, GREY_D);   // solid dark grey rain, smooth edge from the blurred grid
+#else
   for (int y = 0; y < VW; y++) for (int x = 0; x < VW; x++) {                      // dot fill: two staggered 2x2 dots on an 8x8 grid
     if (!A[y / CELL][x / CELL]) continue; int a = x & 7, b = y & 7;
     if ((a == 1 || a == 2) && (b == 1 || b == 2)) g.drawPixel(x, y, INK); else if ((a == 5 || a == 6) && (b == 5 || b == 6)) g.drawPixel(x, y, INK);
@@ -173,11 +180,16 @@ static void drawRain(Adafruit_GFX& g) {
       next -= L;
     }
   }
+#endif
   free(mem); free(raw);
 }
 
 void mapDraw(Adafruit_GFX& g) {
+#ifdef FF_GREY
+  g.fillRect(0, 0, VW, VW, GREY_L);                                                                       // sea: light grey, land stays white
+#else
   for (int y = 3; y < VW; y += 6) for (int x = 0; x < VW; x++) if ((x & 7) < 3) g.drawPixel(x, y, INK);   // sea: 3-on 5-off dashes every 6 rows
+#endif
   std::vector<Edge> E; landEdges(E);
   fillLand(g, E);
   if (cfg.rain) drawRain(g);
