@@ -9,19 +9,13 @@
 #include "fonts/Nico17.h"
 #include "fonts/BigNum.h"
 
-#ifdef FF_GREY
 static uint16_t engCol(uint8_t p) {                                         // grey build: lanes are solid greys instead of hatching
   static const uint16_t ROW[9] = {GREY_D, GREY_L, INK, GREY_D, GREY_L, GREY_D, GREY_L, GREY_D, GREY_L};
   if (p >= 20) return ROW[(p - 20) % 9];
   return p == 0 ? INK : p == 7 ? GREY_L : GREY_D;
 }
-#endif
 static uint8_t rowPat(int i) { static const uint8_t PATS[9] = {1, 2, 0, 8, 9, 3, 5, 4, 6};
-#ifdef FF_GREY
-  return 20 + i;
-#else
-  return PATS[i];
-#endif
+  return g_grey ? 20 + i : PATS[i];
 }
 static bool engPat(uint8_t p, int x, int y) {                               // hatch tiles for the lanes
   switch (p) {
@@ -40,11 +34,8 @@ static void engPoly(const float* px, const float* py, int n, uint8_t pat) {     
     for (int a = 0; a + 1 < k; a += 2) {
       int x0 = max(0, (int)ceilf(xs[a])), x1 = min(799, (int)floorf(xs[a + 1])); if (x1 < x0) continue;
       epd.drawFastHLine(x0, y, x1 - x0 + 1, PAPER);
-#ifdef FF_GREY
-      epd.drawFastHLine(x0, y, x1 - x0 + 1, engCol(pat));
-#else
-      if (pat == 0) epd.drawFastHLine(x0, y, x1 - x0 + 1, INK); else for (int x = x0; x <= x1; x++) if (engPat(pat, x, y)) epd.drawPixel(x, y, INK);
-#endif
+      if (g_grey) epd.drawFastHLine(x0, y, x1 - x0 + 1, engCol(pat));
+      else if (pat == 0) epd.drawFastHLine(x0, y, x1 - x0 + 1, INK); else for (int x = x0; x <= x1; x++) if (engPat(pat, x, y)) epd.drawPixel(x, y, INK);
     }
   }
   for (int i = 0; i < n; i++) { int j = (i + 1) % n; bool flat = fabsf(px[j] - px[i]) >= fabsf(py[j] - py[i]);
@@ -63,6 +54,7 @@ static void engRibbon(float a0x, float a0y, float a1x, float a1y, float tax, flo
 }
 // text whose baseline follows the engine axis (vertical shear, pixel-crisp); yc = vertical centre, anchor 'r' = right-aligned
 static void engText(const GFXfont* f, int asc, int x, int yc, const String& s, float slope, char anchor = 'l') {
+  if (g_grey) { int by = yc - 14 + asc; if (anchor == 'r') x -= tw(f, s); put(f, x, by, s); return; }      // grey build: flat anti-aliased text (the sheared pixel text lost detail)
   String t = fx(s); int16_t x1, y1; uint16_t w, h; epd.setTextSize(1); epd.setFont(f); epd.getTextBounds(t, 0, 0, &x1, &y1, &w, &h);
   const int B = 18; GFXcanvas1 cv(x1 + w + 2, 26); cv.fillScreen(0); cv.setFont(f); cv.setTextColor(1); cv.setCursor(0, B); cv.print(t);
   int x0 = anchor == 'r' ? x - (int)w : x;
@@ -85,11 +77,8 @@ static int bigNum(int x, int top, const String& s, int maxW) {
     const char* p = strchr(CHS, s[i]); if (!p || !*p) continue; const BGlyph& g = f.g[p - CHS]; int idx = 0;
     for (int r = 0; r < g.h; r++) for (int c = 0; c < g.w; c++, idx++) {
       int q = (f.bits[g.off + (idx >> 2)] >> (6 - 2 * (idx & 3))) & 3; if (!q) continue;
-#ifdef FF_GREY
-      epd.drawPixel(x + pen + g.xo + c, base + g.yo + r, q == 3 ? INK : q == 2 ? GREY_D : GREY_L);
-#else
-      if (q >= 2) epd.drawPixel(x + pen + g.xo + c, base + g.yo + r, INK);
-#endif
+      if (g_grey) epd.drawPixel(x + pen + g.xo + c, base + g.yo + r, q == 3 ? INK : q == 2 ? GREY_D : GREY_L);
+      else if (q >= 2) epd.drawPixel(x + pen + g.xo + c, base + g.yo + r, INK);
     }
     pen += g.adv;
   }
@@ -140,21 +129,30 @@ static void drawEngines(const char* clock) {
     }
   } else { String m = String("No airliners within ") + (int)lroundf(dU(cfg.radiusMi)) + " " + uName(); put(&Nico16, 8, 150, m); put(&Nico14, 8, 172, "Nothing big is flying in range right now."); }
   // ---- the engine itself: clear what is under it (row by row), then ink ----
-  { int stride = (ENG_W + 7) / 8;
+  if (g_grey) {                                                                 // grey build: 4-tone picture, same chunky Bayer pixels
+    int gs = (ENG_W + 3) / 4;
+    for (int r = 0; r < ENG_H; r++) { int lo = -1, hi = -1;
+      for (int c = 0; c < ENG_W; c++) if ((pgm_read_byte(&ENG_G[r * gs + (c >> 2)]) >> (6 - 2 * (c & 3))) & 3) { if (lo < 0) lo = c; hi = c; }
+      if (lo < 0) continue;
+      epd.drawFastHLine(exLeft + lo, eyTop + r, hi - lo + 1, PAPER);
+      for (int c = lo; c <= hi; c++) { int q = (pgm_read_byte(&ENG_G[r * gs + (c >> 2)]) >> (6 - 2 * (c & 3))) & 3; if (q) epd.drawPixel(exLeft + c, eyTop + r, q == 3 ? INK : q == 2 ? GREY_D : GREY_L); } }
+  } else { int stride = (ENG_W + 7) / 8;
     for (int r = 0; r < ENG_H; r++) { int lo = -1, hi = -1;
       for (int b = 0; b < stride; b++) { uint8_t v = pgm_read_byte(&ENG_BITS[r * stride + b]); if (!v) continue; if (lo < 0) { int c = 0; while (!(v & (0x80 >> c))) c++; lo = b * 8 + c; } int c = 7; while (!(v & (0x80 >> c))) c--; hi = b * 8 + c; }
       if (lo >= 0) epd.drawFastHLine(exLeft + lo, eyTop + r, hi - lo + 1, PAPER); }
     epd.drawBitmap(exLeft, eyTop, ENG_BITS, ENG_W, ENG_H, INK); }
   // ---- bottom third: engines and people ----
   epd.fillRect(0, 318, 800, 3, INK);
-  put(&Nico16, 8, 340, "IN THE AIR"); put(&Nico14, 104, 341, String("within ") + (int)lroundf(dU(cfg.radiusMi)) + " " + uName());
+  int hx = put(&Nico16, 8, 340, "IN THE AIR"); hx = put(&Nico14, hx + 10, 341, String("within ") + (int)lroundf(dU(cfg.radiusMi)) + " " + uName(), GREY_D);
   putRight(&Nico16, 792, 340, clock); putRight(&Nico14, 630, 339, "x = engines \xC2\xB7 number = people on board");
+  { String tot = String("\xC2\xB7 ") + T.planesCounted + (T.planesCounted == 1 ? " plane" : " planes") + " \xC2\xB7 " + T.engines + (T.engines == 1 ? " engine" : " engines"); if (hx + 12 + tw(&Nico14, tot) < 630 - tw(&Nico14, "x = engines \xC2\xB7 number = people on board") - 12) put(&Nico14, hx + 8, 341, tot); }
   static const int colx[4] = {8, 166, 324, 482}, cw = 150;
   for (uint8_t m = 0; m < N_MAKERS; m++) {
     int x = colx[m]; bool hlm = cfg.hl == m + 1;
     box(x, 350, cw + 1, 21); if (hlm) epd.fillRect(x, 350, cw + 1, 21, INK);
     uint16_t fg = hlm ? PAPER : INK;
-    put(&Nico14, x + 6, 364, MAKER_NAME[m], fg); putRight(&Nico14, x + cw - 5, 364, commas(T.makerPeople[m]), fg);
+    String en = String("x") + T.makerEng[m], nmS = MAKER_NAME[m]; if (x + 6 + tw(&Nico14, nmS) + 10 + tw(&Nico14, en) > x + 101) nmS = "R-R";      // engines in range beside the people count
+    put(&Nico14, x + 6, 364, nmS, fg); putRight(&Nico14, x + 101, 364, en, hlm ? PAPER : GREY_D); putRight(&Nico14, x + cw - 5, 364, commas(T.makerPeople[m]), fg);
     uint8_t ord[N_EMS]; int ne = 0; for (uint8_t e = 0; e < N_EMS; e++) if (EMS[e].maker == m && T.emEng[e]) ord[ne++] = e;
     std::sort(ord, ord + ne, [&](uint8_t a, uint8_t b) { return T.emEng[a] > T.emEng[b]; });
     for (int i = 0; i < ne && i < 5; i++) { int yy = 387 + i * 20;

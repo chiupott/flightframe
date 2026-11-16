@@ -51,6 +51,7 @@ struct Config {
   uint8_t rows = 5;
   uint16_t heading = 0;    // degrees that point "up" on the screen (radar) / the way the window faces (window view)
   uint8_t view = 0;        // 0 = radar + list, 1 = window view, 2 = engines view
+  bool bw = false;         // view 0 only: true = the original black-and-white radar, false = the grey radar (BOOT button steps grey radar > B/W radar > window > engines)
   uint8_t hl = 3;          // engines view: engine maker drawn solid black (0 none, 1 CFM, 2 P&W, 3 GE, 4 Rolls-Royce)
   bool flip = false, rain = true, h24 = true, km = false, nm = false;   // km / nm: show distances and radius in kilometres / nautical miles (neither = miles)
   bool valid() const { return ssid.length() && !isnan(lat) && !isnan(lon); }

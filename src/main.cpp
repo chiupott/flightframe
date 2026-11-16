@@ -61,9 +61,9 @@ void setup() {
 void loop() {
   static uint32_t t0 = 0; static bool booted = false, packTried = false, force = false;
   if (millis() > GOOD_BOOT_MS && !booted) { bootCountClear(); booted = true; }     // survived 5 s: not a reset attempt
-  if (!force && millis() - t0 < POLL_MS && t0) {
+  if (!force && millis() - t0 < (cfg.view == 0 && cfg.bw ? 30000UL : POLL_MS) && t0) {
     if (!btnPressed()) { delay(20); return; }
-    cfg.view = (cfg.view + 1) % 3; storeSave(); drawForceFull(); force = true;   // BOOT button: next view, remembered, redraw now
+    if (cfg.view == 0 && !cfg.bw) cfg.bw = true; else { cfg.bw = false; cfg.view = (cfg.view + 1) % 3; } storeSave(); drawForceFull(); force = true;   // BOOT button: next view, remembered, redraw now
   }
   force = false; t0 = millis();
   bool wifi = WiFi.status() == WL_CONNECTED;

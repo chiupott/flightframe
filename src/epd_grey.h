@@ -6,12 +6,10 @@
 #include <SPI.h>
 #include "config.h"
 
-#ifndef GREY_L
-#define GREY_L 0xAD55   // light grey
-#define GREY_D 0x528A   // dark grey
-#endif
+#ifndef GxEPD_BLACK
 #define GxEPD_BLACK 0x0000
 #define GxEPD_WHITE 0xFFFF
+#endif
 
 class EpdGrey : public Adafruit_GFX {
  public:

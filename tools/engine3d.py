@@ -143,6 +143,7 @@ def render(out_wh, ppu, yaw=24, pitch=-12, roll=11, cutthr=0.3, D=9.0, N=18):
     anch=dict(front=proj((0.0,0,0)),rear=proj((3.98,0,0)),face_top=proj((0.0,0,1.0)),face_bot=proj((0,0,-1.0)),
               face_l=proj((0,-1.0,0)),face_r=proj((0,1.0,0)))
     fill=ndi.binary_fill_holes(hf>0.5)
+    global EXTRA; EXTRA=dict(shf=shf,hf=hf,mf=mf,ef=ef,sil=sil,ink=ink,black=black,light=light,thr=thr,edge=edge)
     return ink,anch,fill
 if __name__=="__main__":
     import time; t=time.time()

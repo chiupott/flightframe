@@ -10,27 +10,41 @@
 #include <ctype.h>
 #include "status_data.h"
 #include <SPI.h>
+#include <GxEPD2_BW.h>
 #ifdef FF_GREY
 #include "epd_grey.h"
-#else
-#include <GxEPD2_BW.h>
 #endif
 #include "clock.h"
 #include "terrain.h"
 #include <vector>
 #include <algorithm>
+#include "fonts/Nico12.h"
+#include "fonts/Nico13.h"
 #include "fonts/Nico14.h"
+#include "fonts/Nico15.h"
 #include "fonts/Nico16.h"
+#include "fonts/Nico17.h"
 #include "fonts/NicoItalic14.h"
 #ifdef FF_GREY
-static EpdGrey epd;                                                                                    // 4 grey levels, full-screen flash every redraw
+#include "fonts/AAText.h"
+#endif
+static GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> eb(GxEPD2_750_T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));   // black-and-white driver: full 48 KB frame buffer, partial (no-flash) refreshes
+#ifdef FF_GREY
+static EpdGrey eg;                                                                                     // 4-grey driver: full-screen flash every redraw
+static Adafruit_GFX* G = &eg;                                                                          // whichever driver the current view draws with
+#define epd (*G)
 #else
-static GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> epd(GxEPD2_750_T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));   // full 48 KB frame buffer, one page
+#define epd eb
 #endif
 static uint8_t partials = 0;
 #define INK GxEPD_BLACK
 #define PAPER GxEPD_WHITE
-#ifndef FF_GREY
+#ifdef FF_GREY
+bool g_grey = true;      // false while the B/W radar view is drawn: greys become black, sea/rain go back to patterns, text goes back to the pixel font
+#define GREY_L ((uint16_t)(g_grey ? 0xAD55 : 0x0000))
+#define GREY_D ((uint16_t)(g_grey ? 0x528A : 0x0000))
+#else
+bool g_grey = false;
 #define GREY_L INK    // black-and-white build: greys fall back to black
 #define GREY_D INK
 #endif
@@ -40,10 +54,47 @@ static String fx(const String& s) { String o; for (size_t i = 0; i < s.length();
     uint8_t c = s[i];
     if (c == 0xE2 && i + 2 < s.length()) { uint8_t b = s[i + 1], d = s[i + 2]; if (b == 0x86 && d == 0x92) { o += (char)0x80; i += 2; continue; } if (b == 0x80 && d == 0x93) { o += (char)0x81; i += 2; continue; } }
     if (c == 0xC2 && i + 1 < s.length() && (uint8_t)s[i + 1] == 0xB7) { o += (char)0x82; i += 1; continue; }
+    if (g_grey && c == 0xC2 && i + 1 < s.length() && (uint8_t)s[i + 1] == 0xB0) { o += (char)0x7F; i += 1; continue; }     // degree sign (anti-aliased fonts have it)
     o += (char)c; } return o; }
-static int tw(const GFXfont* f, const String& s) { epd.setTextSize(1); epd.setFont(f); int16_t x1, y1; uint16_t w, h; epd.getTextBounds(fx(s), 0, 0, &x1, &y1, &w, &h); return x1 + w; }
-static int put(const GFXfont* f, int x, int y, const String& s, uint16_t col = INK) { epd.setTextSize(1); epd.setFont(f); epd.setTextColor(col); epd.setCursor(x, y); epd.print(fx(s)); return x + tw(f, s); }
+#ifdef FF_GREY
+// anti-aliased text (grey views): each pixel font has an AA twin with the same cap height; glyph pixels are 2-bit coverage
+static const AFont* aaFor(const GFXfont* f) {
+  if (!g_grey) return nullptr;
+  if (f == &Nico12) return &AA12; if (f == &Nico13) return &AA13; if (f == &Nico14) return &AA14; if (f == &Nico15) return &AA15;
+  if (f == &Nico16) return &AA16; if (f == &Nico17) return &AA17; if (f == &NicoItalic14) return &AAI14; return nullptr;
+}
+static int aaWidth(const AFont* a, const String& t) { int w = 0; for (size_t i = 0; i < t.length(); i++) { uint8_t c = t[i]; if (c >= a->first && c <= a->last) w += a->g[c - a->first].adv; } return w; }
+static int aaDraw(const AFont* a, int x, int y, const String& t, uint16_t col, bool solid) {
+  int pen = x;
+  for (size_t i = 0; i < t.length(); i++) {
+    uint8_t ch = t[i]; if (ch < a->first || ch > a->last) continue;
+    const AGlyph& g = a->g[ch - a->first]; int idx = 0;
+    for (int r = 0; r < g.h; r++) for (int c = 0; c < g.w; c++, idx++) {
+      int q = (a->bits[g.off + (idx >> 2)] >> (6 - 2 * (idx & 3))) & 3; if (!q) continue;
+      uint16_t k = solid ? col : col == 0xFFFF ? (q == 3 ? 0xFFFF : q == 2 ? 0xAD55 : 0x528A) : col == 0x0000 ? (q == 3 ? 0x0000 : q == 2 ? 0x528A : 0xAD55) : (q >= 2 ? col : 0xAD55);
+      epd.drawPixel(pen + g.xo + c, y + g.yo + r, k);
+    }
+    pen += g.adv;
+  }
+  return pen;
+}
+#endif
+static int tw(const GFXfont* f, const String& s) {
+#ifdef FF_GREY
+  if (const AFont* a = aaFor(f)) return aaWidth(a, fx(s));
+#endif
+  epd.setTextSize(1); epd.setFont(f); int16_t x1, y1; uint16_t w, h; epd.getTextBounds(fx(s), 0, 0, &x1, &y1, &w, &h); return x1 + w; }
+static int put(const GFXfont* f, int x, int y, const String& s, uint16_t col = INK) {
+#ifdef FF_GREY
+  if (const AFont* a = aaFor(f)) return aaDraw(a, x, y, fx(s), col, false);
+#endif
+  epd.setTextSize(1); epd.setFont(f); epd.setTextColor(col); epd.setCursor(x, y); epd.print(fx(s)); return x + tw(f, s); }
 static void putHalo(const GFXfont* f, int x, int y, const String& s, int r, uint16_t col = INK) {            // paper outline so text stays readable over the map
+#ifdef FF_GREY
+  if (const AFont* a = aaFor(f)) { String t = fx(s);
+    for (int dy = -r; dy <= r; dy++) for (int dx = -r; dx <= r; dx++) if (dx || dy) { if (abs(dx) + abs(dy) > r + 1) continue; aaDraw(a, x + dx, y + dy, t, PAPER, true); }
+    aaDraw(a, x, y, t, col, false); return; }
+#endif
   for (int dy = -r; dy <= r; dy++) for (int dx = -r; dx <= r; dx++) if (dx || dy) { if (abs(dx) + abs(dy) > r + 1) continue; put(f, x + dx, y + dy, s, PAPER); }
   put(f, x, y, s, col);
 }
@@ -56,6 +107,10 @@ static bool airlineOf(const char* cs, char* out) { if (strlen(cs) < 4 || !isalph
 static void drawLogo(const char* cs, int x, int y) {
   char al[4]; if (!airlineOf(cs, al)) return;
   size_t n = 0; uint8_t* b = storLoad((String("/logos/") + al + ".lg").c_str(), n);
+  if (b && n > 2 && (b[1] & 0x80)) {                                               // 4-grey mark (tools/bake_logos2.py): 2 bits per pixel; the B/W radar keeps the two darker levels
+    int w = b[0], h = b[1] & 0x7F, stride = (w + 3) / 4;
+    for (int r = 0; r < h; r++) for (int c = 0; c < w; c++) { int q = (b[2 + r * stride + (c >> 2)] >> (6 - 2 * (c & 3))) & 3; if (q) { if (g_grey) epd.drawPixel(x + c, y + r, q == 3 ? INK : q == 2 ? GREY_D : GREY_L); else if (q >= 2) epd.drawPixel(x + c, y + r, INK); } }
+    free(b); return; }
   if (b && n > 2) { int w = b[0], h = b[1], stride = (w + 7) / 8; for (int r = 0; r < h; r++) for (int c = 0; c < w; c++) if (b[2 + r * stride + (c >> 3)] & (0x80 >> (c & 7))) epd.drawPixel(x + c, y + r, INK); free(b); return; }
   free(b);
   box(x, y + 9, 44, 26); put(&Nico14, x + 22 - tw(&Nico14, al) / 2, y + 27, al);        // no logo on the card: code badge
@@ -89,10 +144,8 @@ static void drawList(const char* clock) {
 // ---- radar ----
 static void ring(int r) {                                                    // dotted ring: 3 on / 5 off, 2 px, paper halo
   float circ = 2 * PI * r;
-#ifdef FF_GREY
-  for (float s = 0; s < circ; s += 1) { if (((int)s % 8) >= 4) continue; float a = s / r; epd.fillRect(VCX + (int)lroundf(r * sinf(a)) - 1, VCY - (int)lroundf(r * cosf(a)) - 1, 3, 3, GREY_D); }   // grey dots, no halo
-  return;
-#endif
+  if (g_grey) { for (float s = 0; s < circ; s += 1) { if (((int)s % 8) >= 4) continue; float a = s / r; epd.fillRect(VCX + (int)lroundf(r * sinf(a)) - 1, VCY - (int)lroundf(r * cosf(a)) - 1, 3, 3, GREY_D); }   // grey dots, no halo
+    return; }
   for (int pass = 0; pass < 2; pass++) for (float s = 0; s < circ; s += 1) {
     if (pass == 1 && ((int)s % 8) >= 3) continue;
     float a = s / r; int x = VCX + (int)lroundf(r * sinf(a)), y = VCY - (int)lroundf(r * cosf(a));
@@ -318,35 +371,73 @@ static void drawWindow(Feed feed, bool wifiOk, const char* clock) {
 
 #include "engview.h"
 #include "diag.h"
-void drawInit() { SPI.begin(EPD_SCK, SD_MISO, EPD_MOSI, EPD_CS); epd.init(115200, true, 2, false); epd.setRotation(0); }
+static uint8_t lastDrv = 0;                                                  // 0 none, 1 black-and-white driver, 2 grey driver
+static void pageBegin(bool bw, bool full) {                                  // start a picture on the driver this view needs; switching driver forces a full refresh
+#ifdef FF_GREY
+  if (!bw) { G = &eg; lastDrv = 2; eg.setFullWindow(); eg.firstPage(); return; }
+  G = &eb;
+#endif
+  if (lastDrv != 1) { eb.init(115200, true, 2, false); eb.setRotation(0); lastDrv = 1; full = true; partials = 1; }
+  if (full) eb.setFullWindow(); else eb.setPartialWindow(0, 0, 800, 480);
+  eb.firstPage();
+}
+static bool pageNext() {
+#ifdef FF_GREY
+  if (G == &eg) return eg.nextPage();
+#endif
+  return eb.nextPage();
+}
+void drawInit() { SPI.begin(EPD_SCK, SD_MISO, EPD_MOSI, EPD_CS);
+#ifdef FF_GREY
+  eg.init(); eg.setRotation(0);
+#endif
+}
 void drawMessage(const char* l1, const char* l2) {
-  epd.setFullWindow(); epd.firstPage();
-  do { epd.fillScreen(PAPER); put(&Nico16, 40, 200, l1); put(&Nico14, 40, 232, l2); } while (epd.nextPage());
+#ifdef FF_GREY
+  g_grey = true; pageBegin(false, true);
+#else
+  pageBegin(true, true);
+#endif
+  do { epd.fillScreen(PAPER); put(&Nico16, 40, 200, l1); put(&Nico14, 40, 232, l2); } while (pageNext());
 }
 #ifdef FF_SWATCH
 void drawSwatches() {   // test card: which grey is which on this panel
-  epd.setFullWindow(); epd.firstPage();
+  pageBegin(false, true);
   do { epd.fillScreen(PAPER);
     const uint16_t C[4] = {PAPER, GREY_L, GREY_D, INK}; const char* N[4] = {"WHITE", "GREY_L", "GREY_D", "BLACK"};
     for (int i = 0; i < 4; i++) { epd.fillRect(20 + i * 195, 40, 170, 300, C[i]); epd.drawRect(20 + i * 195, 40, 170, 300, INK); put(&Nico16, 30 + i * 195, 380, N[i]); }
     epd.fillRect(20, 400, 760, 60, GREY_L); epd.fillRect(20 + 380, 410, 380, 40, GREY_D);
-  } while (epd.nextPage());
+  } while (pageNext());
 }
 #endif
 void drawForceFull() { partials = 0; }   // next redraw is a full (flashing) refresh, e.g. after switching view
 void drawScreen(Feed feed, bool wifiOk) {
+  bool forced = partials == 0;
+#ifdef FF_GREY
+  bool bw = cfg.view == 0 && cfg.bw;                                           // B/W radar: the original look, partial refreshes, no flash
+  g_grey = !bw;
+#else
+  bool bw = true;
+#endif
   if (cfg.view == 1 && !terrainReady()) {                                   // no skyline for this location + facing yet: make it (needs Wi-Fi + SD)
     static uint32_t lastTry = 0;
     if (wifiOk && (!lastTry || millis() - lastTry > 30UL * 60UL * 1000UL)) { lastTry = millis(); terrainGenerate(); wp.tried = false; wp.ok = false; }
   }
+#ifdef FF_GREY
+  if (cfg.view == 2 && !forced) {                                              // engines view: nothing moves, so only redraw (= flash) when the counts change, or every 5 minutes
+    static uint32_t lastSig = 0, lastAt = 0; Tally T; tallyPlanes(T);
+    uint32_t sig = (T.engines * 131u + T.people) * 31u + T.planesCounted + (feed == Feed::Live ? 7u : 0u);
+    if (lastAt && sig == lastSig && millis() - lastAt < 300000UL) return;
+    lastSig = sig; lastAt = millis();
+  }
+#endif
   bool full = (partials++ % FULL_REFRESH_EVERY) == 0;
-  if (full) epd.setFullWindow(); else epd.setPartialWindow(0, 0, 800, 480);
-  epd.firstPage();
   String clk = clockStr();
   if (cfg.view == 1) { winLoad(); if (!wp.ok) { drawMessage("Window view needs its terrain file", "Copy /window/terrain.bin to the SD card"); return; } }
+  pageBegin(bw, full);
   do { epd.fillScreen(PAPER); if (cfg.view == 1) drawWindow(feed, wifiOk, clk.c_str()); else if (cfg.view == 2) drawEngines(clk.c_str()); else { drawRadar(feed, wifiOk, clk.c_str()); drawList(clk.c_str()); }
 #ifdef FF_DIAG   // build with -DFF_DIAG to print a status line (SD / download / feed / plane count) in the corner
     if (cfg.view != 2) { char dg[48]; snprintf(dg, sizeof dg, "sd:%d pack:%d http:%d n:%d", g_dSd, g_dPack, g_dHttp, (int)nPlanes); epd.setFont(nullptr); epd.setTextSize(1); epd.setTextColor(INK); epd.fillRect(626, 466, 170, 12, PAPER); epd.setCursor(632, 468); epd.print(dg); }
 #endif
-  } while (epd.nextPage());
+  } while (pageNext());
 }

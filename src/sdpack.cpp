@@ -45,10 +45,11 @@ static bool fetchOne(const PackFile& pf) {
 }
 // Airline logos: one packed file (tools/pack_logos.py) in the sdpack release; the frame unpacks it to /logos/<ICAO>.lg and leaves a marker so it only does this once.
 #define LOGOS_URL PACK_URL "logos.pack"
-static bool logosFetchAndUnpack() {
+#define LOGOS2_URL PACK_URL "logos2.pack"       // grey marks from soaring-symbols; unpacked over the 1-bit ones with the same names
+static bool logosFetchAndUnpack(const char* url = LOGOS_URL, const char* marker = "/logos/.ok") {
   WiFiClientSecure c; SET_CA(c);
   HTTPClient h; h.setTimeout(20000); h.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); h.setUserAgent("FlightFrame/" FW_VERSION);
-  if (!h.begin(c, LOGOS_URL)) return false;
+  if (!h.begin(c, url)) return false;
   int code = h.GET(); int len = h.getSize();
   Serial.printf("logos: http %d len %d\n", code, len);
   if (code != 200 || len < 16 || len > 2000000) { h.end(); return false; }
@@ -78,7 +79,7 @@ static bool logosFetchAndUnpack() {
   in.close(); SD.remove("/logos.tmp");
   Serial.printf("logos: unpacked %d of %d\n", wrote, count);
   if (!good || wrote != count) return false;
-  File m = SD.open("/logos/.ok", FILE_WRITE); if (m) { m.print("ok"); m.close(); }
+  File m = SD.open(marker, FILE_WRITE); if (m) { m.print("ok"); m.close(); }
   return true;
 }
 static bool haveFile(const PackFile& pf) {          // present and of the right kind (an old UK-only land.bin counts as missing)
@@ -87,11 +88,12 @@ static bool haveFile(const PackFile& pf) {          // present and of the right 
 }
 int sdpackEnsure() {
   int missing = 0; for (auto& pf : FILES) if (!haveFile(pf)) missing++;
-  bool needLogos = !SD.exists("/logos/.ok");
-  if (!missing && !needLogos) return 0;
+  bool needLogos = !SD.exists("/logos/.ok"), needLogos2 = !SD.exists("/logos/.ok2");
+  if (!missing && !needLogos && !needLogos2) return 0;
   drawMessage("Setting up the SD card", needLogos ? "Downloading map, planes and logos..." : "Downloading map and planes...");
   int got = 0; for (auto& pf : FILES) if (!haveFile(pf) && fetchOne(pf)) got++;
   if (needLogos && logosFetchAndUnpack()) got++;
+  if (logosFetchAndUnpack(LOGOS2_URL, "/logos/.ok2")) got++;
   Serial.printf("sdpack: %d fetched\n", got);
   return got;
 }
