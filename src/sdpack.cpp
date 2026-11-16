@@ -17,7 +17,7 @@ extern const uint8_t rootca_crt_bundle_end[] asm("_binary_src_x509_crt_bundle_bi
 #define PACK_URL "https://github.com/" GH_OWNER "/" GH_REPO "/releases/download/sdpack/"
 struct PackFile { const char* name; const char* path; const char* magic; };
 static const PackFile FILES[] = {
-  { "land.bin",    "/map/land.bin", "FFL1" },     // UK + Ireland coastline (Natural Earth, public domain)
+  { "land2.bin",   "/map/land.bin", "FFL2" },     // north-west Europe coastline (Natural Earth, public domain); replaces the older UK-only FFL1 file
   { "sprites.bin", "/sprites.bin",  "FFSP" },     // pre-rendered 3D plane pictures for the window view
 };
 static bool fetchOne(const PackFile& pf) {
@@ -81,12 +81,16 @@ static bool logosFetchAndUnpack() {
   File m = SD.open("/logos/.ok", FILE_WRITE); if (m) { m.print("ok"); m.close(); }
   return true;
 }
+static bool haveFile(const PackFile& pf) {          // present and of the right kind (an old UK-only land.bin counts as missing)
+  File f = SD.open(pf.path); if (!f) return false;
+  uint8_t m[4]; bool ok = f.read(m, 4) == 4 && !memcmp(m, pf.magic, 4); f.close(); return ok;
+}
 int sdpackEnsure() {
-  int missing = 0; for (auto& pf : FILES) if (!SD.exists(pf.path)) missing++;
+  int missing = 0; for (auto& pf : FILES) if (!haveFile(pf)) missing++;
   bool needLogos = !SD.exists("/logos/.ok");
   if (!missing && !needLogos) return 0;
   drawMessage("Setting up the SD card", needLogos ? "Downloading map, planes and logos..." : "Downloading map and planes...");
-  int got = 0; for (auto& pf : FILES) if (!SD.exists(pf.path) && fetchOne(pf)) got++;
+  int got = 0; for (auto& pf : FILES) if (!haveFile(pf) && fetchOne(pf)) got++;
   if (needLogos && logosFetchAndUnpack()) got++;
   Serial.printf("sdpack: %d fetched\n", got);
   return got;

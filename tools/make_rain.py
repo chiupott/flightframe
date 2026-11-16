@@ -6,7 +6,7 @@ so the file contains no personal data. Runs in GitHub Actions every 10 minutes. 
 import io, json, math, struct, sys, urllib.request
 from PIL import Image
 Z = 7
-LAT = (49.0, 61.0); LON = (-11.5, 2.5)          # UK + Ireland + Shetland
+LAT = (49.0, 61.0); LON = (-11.5, 8.5)         # UK + Ireland + Shetland + Netherlands, Belgium, north-west France
 UA = {"User-Agent": "FlightFrame-rain/1.0 (+https://github.com/chiupott/flightframe)"}
 def get(url):
     try:

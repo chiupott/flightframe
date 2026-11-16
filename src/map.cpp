@@ -3,6 +3,7 @@
 #include "config.h"
 #include "storage.h"
 #include "clock.h"
+#include <SD.h>
 #include <vector>
 #include <algorithm>
 #include <math.h>
@@ -13,20 +14,52 @@ struct Edge { float x0, y0, x1, y1; };
 
 // ---------- land ----------
 static int16_t rd16(const uint8_t* p) { return (int16_t)(p[0] | (p[1] << 8)); }
+static int32_t rd32(const uint8_t* p) { return (int32_t)(p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24)); }
+// Adds one coastline segment to E, keeping only what can change the fill or show in the view square:
+// segments wholly above/below it are dropped; ones wholly left/right are squashed to the edge so scanline parity stays right.
+static void addEdge(std::vector<Edge>& E, float px, float py, float x, float y) {
+  if ((py < -3 && y < -3) || (py > VW + 3 && y > VW + 3)) return;
+  if (px < -4 && x < -4) { px = x = -4; } else if (px > VW + 4 && x > VW + 4) { px = x = VW + 4; }
+  E.push_back({px, py, x, y});
+}
 static void landEdges(std::vector<Edge>& E) {
+  File f = SD.open("/map/land.bin"); if (!f) return;
+  uint8_t h[8]; if (f.read(h, 8) != 8) { f.close(); return; }
+  if (!memcmp(h, "FFL2", 4)) {                                                   // north-west Europe, 1e-4 deg, streamed ring by ring (rings far from the view are skipped)
+    uint32_t nr = (uint32_t)rd32(h + 4);
+    float la[4], lo[4]; for (int k = 0; k < 4; k++) viewUnproj((k & 1) ? VW : 0, (k & 2) ? VW : 0, la[k], lo[k]);
+    int32_t vminLo = (int32_t)((min(min(lo[0], lo[1]), min(lo[2], lo[3])) - 0.05f) * 1e4f), vmaxLo = (int32_t)((max(max(lo[0], lo[1]), max(lo[2], lo[3])) + 0.05f) * 1e4f);
+    int32_t vminLa = (int32_t)((min(min(la[0], la[1]), min(la[2], la[3])) - 0.05f) * 1e4f), vmaxLa = (int32_t)((max(max(la[0], la[1]), max(la[2], la[3])) + 0.05f) * 1e4f);
+    static uint8_t buf[512];
+    for (uint32_t r = 0; r < nr; r++) {
+      uint8_t rh[20]; if (f.read(rh, 20) != 20) break;
+      uint32_t np = (uint32_t)rd32(rh); int32_t x0 = rd32(rh + 4), y0 = rd32(rh + 8), x1 = rd32(rh + 12), y1 = rd32(rh + 16);
+      if (x1 < vminLo || x0 > vmaxLo || y1 < vminLa || y0 > vmaxLa) { f.seek(f.position() + (size_t)np * 8); continue; }
+      float px = 0, py = 0; uint32_t i = 0;
+      while (i < np) {
+        uint32_t take = min<uint32_t>(np - i, sizeof buf / 8); if (f.read(buf, take * 8) != (int)(take * 8)) { f.close(); return; }
+        for (uint32_t k = 0; k < take; k++, i++) {
+          float x, y; viewProj(rd32(buf + k * 8 + 4) / 1e4f, rd32(buf + k * 8) / 1e4f, x, y);
+          if (i) addEdge(E, px, py, x, y);
+          px = x; py = y;
+        }
+      }
+    }
+    f.close(); return;
+  }
+  if (memcmp(h, "FFL1", 4)) { f.close(); return; }                              // old UK + Ireland file, loaded whole
+  f.close();
   size_t n; uint8_t* b = storLoad("/map/land.bin", n); if (!b) return;
-  if (n < 6 || memcmp(b, "FFL1", 4)) { free(b); return; }
   uint16_t nr = (uint16_t)rd16(b + 4); size_t p = 6;
   for (uint16_t r = 0; r < nr && p + 12 <= n; r++) {
     uint16_t np = (uint16_t)rd16(b + p); p += 12;
-    float px = 0, py = 0, fx = 0, fy = 0;
+    float px = 0, py = 0;
     for (uint16_t i = 0; i < np && p + 4 <= n; i++, p += 4) {
       float lon = rd16(b + p) / 2000.0f - 12.0f, lat = rd16(b + p + 2) / 2500.0f + 49.0f, x, y;
       viewProj(lat, lon, x, y);
-      if (i == 0) { fx = x; fy = y; } else if (!((py < -2 && y < -2) || (py > 482 && y > 482))) E.push_back({px, py, x, y});
+      if (i) addEdge(E, px, py, x, y);
       px = x; py = y;
     }
-    (void)fx; (void)fy;
   }
   free(b);
 }

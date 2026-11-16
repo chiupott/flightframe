@@ -19,7 +19,7 @@ bool rainRefresh() {
   HTTPClient h; h.setTimeout(20000); h.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); h.setUserAgent("FlightFrame/" FW_VERSION);
   if (!h.begin(c, RAIN_URL)) return false;
   int code = h.GET(); int len = h.getSize();
-  if (code != 200 || len < 14 || len > 200000) { h.end(); return false; }
+  if (code != 200 || len < 14 || len > 400000) { h.end(); return false; }
   SD.mkdir("/map"); SD.remove("/map/rain.tmp");
   File f = SD.open("/map/rain.tmp", FILE_WRITE); if (!f) { h.end(); return false; }
   WiFiClient* s = h.getStreamPtr(); uint8_t buf[1024]; int left = len; uint32_t last = millis(); bool head = false, ok = true;
