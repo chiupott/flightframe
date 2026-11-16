@@ -15,10 +15,21 @@
 
 static uint32_t lastOta = 0, lastGood = 0, lastRain = 0; static bool markedGood = false;
 
+#ifndef BTN_PIN
+#define BTN_PIN 9      // BOOT button on the C6 board (IO9); short press = next view
+#endif
+static bool btnPressed() {
+  static bool prev = false; static uint32_t last = 0;
+  bool down = digitalRead(BTN_PIN) == LOW, fire = down && !prev && millis() - last > 400;
+  if (fire) last = millis();
+  prev = down; return fire;
+}
+
 static bool sdOk = false;   // SD card mounted (retried in loop so a card can be pushed in later)
 
 void setup() {
   Serial.begin(115200);
+  pinMode(BTN_PIN, INPUT_PULLUP);
   otaBootCheck();                                   // rolls back a bad update after 3 failed boots
   storeLoad();
   drawInit(); sdOk = storInit();
@@ -37,10 +48,13 @@ void setup() {
 }
 
 void loop() {
-  static uint32_t t0 = 0; static bool booted = false, packTried = false;
+  static uint32_t t0 = 0; static bool booted = false, packTried = false, force = false;
   if (millis() > GOOD_BOOT_MS && !booted) { bootCountClear(); booted = true; }     // survived 5 s: not a reset attempt
-  if (millis() - t0 < POLL_MS && t0) { delay(200); return; }
-  t0 = millis();
+  if (!force && millis() - t0 < POLL_MS && t0) {
+    if (!btnPressed()) { delay(20); return; }
+    cfg.view = (cfg.view + 1) % 3; storeSave(); drawForceFull(); force = true;   // BOOT button: next view, remembered, redraw now
+  }
+  force = false; t0 = millis();
   bool wifi = WiFi.status() == WL_CONNECTED;
   if (!wifi) wifi = wifiConnect(10000);
   if (!sdOk) sdOk = storInit();

@@ -306,6 +306,7 @@ void drawMessage(const char* l1, const char* l2) {
   epd.setFullWindow(); epd.firstPage();
   do { epd.fillScreen(PAPER); put(&Nico16, 40, 200, l1); put(&Nico14, 40, 232, l2); } while (epd.nextPage());
 }
+void drawForceFull() { partials = 0; }   // next redraw is a full (flashing) refresh, e.g. after switching view
 void drawScreen(Feed feed, bool wifiOk) {
   bool full = (partials++ % FULL_REFRESH_EVERY) == 0;
   if (full) epd.setFullWindow(); else epd.setPartialWindow(0, 0, 800, 480);
