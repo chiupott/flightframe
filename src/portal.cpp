@@ -22,7 +22,7 @@ void portalRun() {
   });
   web.on("/api/save", HTTP_POST, [&] {
     JsonDocument d; if (deserializeJson(d, web.arg("plain"))) { web.send(400, "text/plain", "bad json"); return; }
-    cfg.ssid = String(d["ssid"] | ""); cfg.pw = String(d["pw"] | ""); cfg.postcode = String(d["postcode"] | "");
+    cfg.ssid = String(d["ssid"] | ""); cfg.pw = String(d["pw"] | ""); cfg.postcode = String(d["postcode"] | ""); cfg.assetKey = String(d["assetkey"] | ""); cfg.assetKey.trim();
     cfg.lat = NAN; cfg.lon = NAN;                                   // resolved after joining Wi-Fi
     String un = String(d["unit"] | "mi"); cfg.km = un == "km"; cfg.nm = un == "nm";
     float r = d["radius"] | 50.0f; if (cfg.km) r /= 1.609344f; else if (cfg.nm) r /= 0.868976f;

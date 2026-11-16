@@ -21,6 +21,9 @@ void setup() {
   Serial.begin(115200);
   otaBootCheck();                                   // rolls back a bad update after 3 failed boots
   storeLoad();
+#ifdef FF_ASSET_KEY    // local builds only: copy the baked-in read-only logo key into flash once (survives OTA updates)
+  if (!cfg.assetKey.length()) { cfg.assetKey = FF_ASSET_KEY; storeSave(); }
+#endif
   drawInit(); sdOk = storInit();
   if (bootCount() >= 3) {                           // 3 power-cycles in quick succession = reset
     storeWipe(); bootCountClear();
