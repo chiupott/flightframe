@@ -4,6 +4,7 @@
 #include <driver/gpio.h>
 #include "config.h"
 #include "store.h"
+#include "msg.h"
 #include "net.h"
 #include "geo.h"
 #include "adsb.h"
@@ -70,7 +71,8 @@ void setup() {
 void loop() {
   static uint32_t t0 = 0; static bool booted = false, packTried = false, force = false;
   if (millis() > GOOD_BOOT_MS && !booted) { bootCountClear(); booted = true; }     // survived 5 s: not a reset attempt
-  static bool pend = false, viewOnly = false; static uint32_t pressAt = 0;
+  static bool pend = false, viewOnly = false, card = false; static uint32_t pressAt = 0;
+  if (card) { if (btnCount) { btnCount = 0; card = false; drawForceFull(); force = true; viewOnly = true; } else { delay(40); return; } }          // a message card is up: any BOOT press closes it and brings the view back
   if (btnCount) { uint8_t n = btnCount; btnCount = 0; Serial.printf("btn: %u taps (%u raw edges) at view %d bw %d, pin=%d\n", n, (unsigned)btnRaw, cfg.view, cfg.bw, digitalRead(BTN_PIN)); while (n--) { if (cfg.view == 0 && !cfg.bw) cfg.bw = true; else { cfg.bw = false; cfg.view = (cfg.view + 1) % 3; } } pend = true; pressAt = millis(); }
   if (pend && millis() - pressAt > 700) { pend = false; Serial.printf("btn: redraw view %d bw %d\n", cfg.view, cfg.bw); storeSave(); drawForceFull(); force = true; viewOnly = true; }        // BOOT button: next view, remembered
   settingsPoll(); if (settingsChanged()) {
@@ -115,6 +117,8 @@ void loop() {
   } else if (lastGood && millis() - lastGood < 10UL * 60UL * 1000UL) feed = Feed::Stale;
   if (wifi && cfg.rain && (!lastRain || millis() - lastRain > 10UL * 60UL * 1000UL)) { lastRain = millis(); Serial.printf("heap before rain: %u max %u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap()); rainRefresh(); Serial.printf("heap after rain: %u\n", ESP.getFreeHeap()); }
   lap("planes+routes+rain");
+  static uint32_t lastMsg = 0; static Msg mg;
+  if (wifi && feed == Feed::Live && (!lastMsg || millis() - lastMsg > 55000UL)) { lastMsg = millis(); if (msgPoll(mg)) { lap("msg"); msgDraw(mg); card = true; return; } }      // a private note: show it instead of the view
   uint32_t tD = millis(); drawScreen(feed, wifi); uint32_t tE = millis();
   Serial.printf("cycle: fetch %lu ms, draw %lu ms, taps waiting %u\n", (unsigned long)(tD - t0), (unsigned long)(tE - tD), (unsigned)btnCount);
   if (!lastGood && feed == Feed::None) t0 = millis() - ((cfg.view == 0 && cfg.bw ? 30000UL : POLL_MS) - 8000UL);   // nothing fetched yet (network still settling after boot): try again in 8 s, not a minute

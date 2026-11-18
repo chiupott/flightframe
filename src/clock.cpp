@@ -29,3 +29,10 @@ String clockStr() {
   else snprintf(b, sizeof b, "%d:%02d %s", t.tm_hour % 12 ? t.tm_hour % 12 : 12, t.tm_min, t.tm_hour >= 12 ? "pm" : "am");
   return b;
 }
+String clockFmt(uint32_t t) {
+  if (!t) return "--:--";
+  applyZone(); struct tm tm; time_t n = (time_t)t; localtime_r(&n, &tm); char b[12];
+  if (cfg.h24) snprintf(b, sizeof b, "%02d:%02d", tm.tm_hour, tm.tm_min);
+  else snprintf(b, sizeof b, "%d:%02d %s", tm.tm_hour % 12 ? tm.tm_hour % 12 : 12, tm.tm_min, tm.tm_hour >= 12 ? "pm" : "am");
+  return b;
+}
