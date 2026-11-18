@@ -60,7 +60,7 @@ void setup() {
   drawMessage("Connecting...", cfg.ssid.c_str());
   if (!wifiConnect()) { drawMessage("No Wi-Fi", "Retrying..."); }
   if (isnan(cfg.lat) && WiFi.status() == WL_CONNECTED) {            // geocode once; stays on the device
-    float la, lo; GeoResult r = geocodeEx(cfg.postcode, la, lo);
+    float la, lo; GeoResult r = geocodeEx(cfg.postcode, cfg.country, la, lo);
     if (r == GEO_OK) { cfg.lat = la; cfg.lon = lo; storeSave(); }
     else if (r == GEO_NOTFOUND) { drawMessage("Postcode not found", cfg.postcode.c_str()); delay(8000); storeWipe(); ESP.restart(); }
     // GEO_NET: no internet yet. Keep everything; the loop tries again below.
@@ -98,7 +98,7 @@ void loop() {
   bool wifi = WiFi.status() == WL_CONNECTED;
   if (!wifi) wifi = wifiConnect(10000);
   if (isnan(cfg.lat)) {                                                          // location still unknown (no internet when it was set up): keep trying, never wipe the settings for this
-    float la, lo; GeoResult r = wifi ? geocodeEx(cfg.postcode, la, lo) : GEO_NET;
+    float la, lo; GeoResult r = wifi ? geocodeEx(cfg.postcode, cfg.country, la, lo) : GEO_NET;
     if (r == GEO_OK) { cfg.lat = la; cfg.lon = lo; storeSave(); }
     else if (r == GEO_NOTFOUND) { drawMessage("Postcode not found", cfg.postcode.c_str()); delay(8000); storeWipe(); ESP.restart(); }
     else { drawMessage("Waiting for the internet", "Will try again in a minute"); delay(45000); return; }

@@ -140,8 +140,11 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
     <p class="hint" id="h2hint">The frame has no GPS. It uses this spot as the middle of the radar and the window view.</p>
     <div id="locbox" style="display:flex;flex-direction:column;gap:14px">
     <div>
+      <label for="cc">Country</label>
+      <select id="cc"><option value="GB">United Kingdom</option><option value="IE">Ireland</option><option value="NL">Netherlands</option><option value="BE">Belgium</option><option value="DE">Germany</option><option value="FR">France</option><option value="ES">Spain</option><option value="PT">Portugal</option><option value="IT">Italy</option><option value="CH">Switzerland</option><option value="AT">Austria</option><option value="DK">Denmark</option><option value="SE">Sweden</option><option value="NO">Norway</option><option value="FI">Finland</option><option value="PL">Poland</option><option value="CZ">Czechia</option><option value="XX">Other: type town and country below</option></select>
+      <div style="height:10px"></div>
       <label for="pc">Postcode</label>
-      <input id="pc" type="text" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" placeholder="e.g. SW1A 1AA" maxlength="9">
+      <input id="pc" type="text" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" placeholder="e.g. SW1A 1AA or 1016 CJ" maxlength="40">
       <p class="hint" style="margin-top:6px">The frame looks this up once, after it joins your Wi-Fi, and keeps only the result on the device. It is never sent anywhere else.</p>
     </div>
     <div>
@@ -228,7 +231,7 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
     <summary>What the frame stores</summary>
     <pre id="json"></pre>
   </details>
-  <p class="cap">Data: aircraft from adsb.fi, rain radar from RainViewer, postcode lookup from postcodes.io. Aircraft icons from ADS-B Radar (adsb-radar.com).</p>
+  <p class="cap">Data: aircraft from adsb.fi, rain radar from RainViewer, postcode lookup from postcodes.io (UK) and OpenStreetMap contributors (rest of Europe). Aircraft icons from ADS-B Radar (adsb-radar.com).</p>
 </div>
 
 <div class="bar"><div>
@@ -239,7 +242,7 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
 <p id="hm" style="text-align:right;margin:28px 4px 18px;font-size:12px;opacity:.55">Hand made for Josh</p>
 <script>
 (function(){
-  var S={ssid:'',pw:'',pc:'',lat:null,lon:null,radius:50,unit:'mi',head:0,headw:0,hm:0,flip:false,view:0,hl:3,rows:5,rain:true,h24:true,lan:false};   /* view: 0 radar grey, 1 radar B/W, 2 window, 3 engines */
+  var S={ssid:'',pw:'',pc:'',cc:'GB',lat:null,lon:null,radius:50,unit:'mi',head:0,headw:0,hm:0,flip:false,view:0,hl:3,rows:5,rain:true,h24:true,lan:false};   /* view: 0 radar grey, 1 radar B/W, 2 window, 3 engines */
   function H(){return S.hm?S.headw:S.head}function setH(v){if(S.hm)S.headw=v;else S.head=v}
   var NETS=[];
   var $=function(id){return document.getElementById(id)};
@@ -273,6 +276,7 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
 
   /* Location */
   $('pc').addEventListener('input',function(){S.pc=this.value.trim().toUpperCase();render()});
+  $('cc').addEventListener('change',function(){S.cc=this.value;render()});
   $('pastec').addEventListener('input',function(){var m=this.value.match(/(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)/);if(m){S.lat=parseFloat(m[1]);S.lon=parseFloat(m[2]);$('lat').value=S.lat;$('lon').value=S.lon}else{S.lat=null;S.lon=null}render()});
   $('lat').addEventListener('input',function(){var v=parseFloat(this.value);S.lat=isNaN(v)?null:v;render()});
   $('lon').addEventListener('input',function(){var v=parseFloat(this.value);S.lon=isNaN(v)?null:v;render()});
@@ -385,10 +389,10 @@ pre{margin:0;padding:0 12px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo
   $('save').addEventListener('click',function(){
     var b=this,st=$('status'),manual=S.lat!==null&&S.lon!==null;
     if(!S.lan&&!S.ssid){st.className='status';st.textContent='Pick your Wi-Fi network first (step 1).';return}
-    if(!S.lan&&!manual&&S.pc.length<5){st.className='status';st.textContent='Enter your postcode, or coordinates, in step 2.';return}
+    if(!S.lan&&!manual&&S.pc.length<3){st.className='status';st.textContent='Enter your postcode, or coordinates, in step 2.';return}
     var body={radius:S.radius,unit:S.unit,head:S.head,headw:S.headw,flip:S.flip,view:[0,0,1,2][S.view],bw:S.view===1,hl:S.hl,rows:S.rows,rain:S.rain,h24:S.h24};
-    if(!S.lan){body.ssid=S.ssid;body.pw=S.pw;body.postcode=S.pc;if(manual){body.lat=S.lat;body.lon=S.lon}}
-    else if(manual){body.lat=S.lat;body.lon=S.lon}else if(S.pc.length>=5)body.postcode=S.pc;
+    if(!S.lan){body.ssid=S.ssid;body.pw=S.pw;body.postcode=S.pc;body.country=S.cc;if(manual){body.lat=S.lat;body.lon=S.lon}}
+    else if(manual){body.lat=S.lat;body.lon=S.lon}else if(S.pc.length>=3){body.postcode=S.pc;body.country=S.cc}
     b.disabled=true;st.className='status';st.textContent='Saving…';
     fetch(S.lan?'/api/apply':'/api/save',{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}).then(function(r){
       if(!r.ok)throw 0;st.className='status ok';

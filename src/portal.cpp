@@ -24,7 +24,7 @@ void portalRun() {
   });
   web.on("/api/save", HTTP_POST, [&] {
     JsonDocument d; if (deserializeJson(d, web.arg("plain"))) { web.send(400, "text/plain", "bad json"); return; }
-    cfg.ssid = String(d["ssid"] | ""); cfg.pw = String(d["pw"] | ""); cfg.postcode = String(d["postcode"] | "");
+    cfg.ssid = String(d["ssid"] | ""); cfg.pw = String(d["pw"] | ""); cfg.postcode = String(d["postcode"] | ""); cfg.country = String(d["country"] | "GB"); cfg.country.toUpperCase(); if (cfg.country.length() != 2) cfg.country = "GB";
     cfg.lat = NAN; cfg.lon = NAN;                                   // resolved after joining Wi-Fi
     String un = String(d["unit"] | "mi"); cfg.km = un == "km"; cfg.nm = un == "nm";
     float r = d["radius"] | 50.0f; if (cfg.km) r /= 1.609344f; else if (cfg.nm) r /= 0.868976f;
@@ -50,7 +50,7 @@ static void applyDisplay(JsonDocument& d) {
   cfg.rows = constrain((int)(d["rows"] | 5), 3, 6); cfg.view = constrain((int)(d["view"] | 0), 0, 2); cfg.bw = d["bw"] | false; cfg.hl = constrain((int)(d["hl"] | 3), 0, 4);
   cfg.heading = (int)(d["head"] | 0) % 360; cfg.headingWin = (int)(d["headw"] | (int)cfg.heading) % 360; cfg.flip = d["flip"] | false; cfg.rain = d["rain"] | true; cfg.h24 = d["h24"] | true;
   if (d["lat"].is<float>() && d["lon"].is<float>()) { cfg.lat = d["lat"]; cfg.lon = d["lon"]; cfg.postcode = ""; }       // new location as coordinates: used straight away
-  else { String pc = String(d["postcode"] | ""); pc.trim(); if (pc.length() >= 5) lanPostcode = pc; }                      // new postcode: looked up by the main loop (needs the memory the server uses)
+  else { String pc = String(d["postcode"] | ""); pc.trim(); if (pc.length() >= 3) { lanPostcode = pc; String cc = String(d["country"] | cfg.country.c_str()); cc.toUpperCase(); if (cc.length() == 2) cfg.country = cc; } }                      // new postcode: looked up by the main loop (needs the memory the server uses)
 }
 void settingsPoll() {
   if (!lan) {

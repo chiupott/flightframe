@@ -47,6 +47,7 @@
 
 struct Config {
   String ssid, pw, postcode;
+  String country = "GB";          // ISO code of the postcode's country ("XX" = free text)
   float lat = NAN, lon = NAN;
   float radiusMi = 50;     // radar radius in miles (always stored in miles; km users get a converted value)
   uint8_t rows = 5;
