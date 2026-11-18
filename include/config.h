@@ -5,6 +5,7 @@
 #define GH_OWNER   "chiupott"          // GitHub user that owns the public repo
 #define GH_REPO    "flightframe"
 #define GH_ASSET   "firmware.bin"       // release asset the frame downloads
+#define GH_ASSET_SIG "firmware.sig"     // its signature (ECDSA P-256 over SHA-256, base64); releases without one are ignored
 #define AP_NAME    "FlightFrame-Setup"  // open Wi-Fi network shown during setup
 #define PORTAL_IP  "192.168.4.1"
 
@@ -49,6 +50,7 @@ struct Config {
   float lat = NAN, lon = NAN;
   float radiusMi = 50;     // radar radius in miles (always stored in miles; km users get a converted value)
   uint8_t rows = 5;
+  uint16_t headingWin = 0; // the way the window faces (window view); the radar uses heading
   uint16_t heading = 0;    // degrees that point "up" on the screen (radar) / the way the window faces (window view)
   uint8_t view = 0;        // 0 = radar + list, 1 = window view, 2 = engines view
   bool bw = false;         // view 0 only: true = the original black-and-white radar, false = the grey radar (BOOT button steps grey radar > B/W radar > window > engines)

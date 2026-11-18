@@ -6,16 +6,17 @@ from PIL import Image, ImageDraw, ImageFont
 TTF, OUT = sys.argv[1], sys.argv[2]
 PREV = sys.argv[3] if len(sys.argv) > 3 else None
 # name, target cap height (px, same as the Nico font it replaces), italic, yAdvance
-FONTS = [("AA12", 9, 0, 14), ("AA13", 9, 0, 15), ("AA14", 11, 0, 17), ("AA15", 12, 0, 18), ("AA16", 12, 0, 18), ("AA17", 13, 0, 20), ("AAI14", 11, 1, 17)]
+# optional 5th field: only bake these characters (for big display text, keeps flash small)
+FONTS = [("AA12", 9, 0, 14), ("AA13", 9, 0, 15), ("AA14", 11, 0, 17), ("AA15", 12, 0, 18), ("AA16", 12, 0, 18), ("AA17", 13, 0, 20), ("AAI14", 11, 1, 17), ("AA30", 22, 0, 34), ("AA36", 26, 0, 40), ("AAT72", 56, 0, 76, "Hi, Josh.")]
 CAPR = 0.70   # Barlow cap height / em
 CODES = list(range(0x20, 0x83)); CH = {c: chr(c) for c in range(0x20, 0x7F)}; CH.update({0x7F: "°", 0x81: "–", 0x82: "·"})
 def q4(v): return 3 if v > 0.70 else 2 if v > 0.42 else 1 if v > 0.16 else 0
-out = ["// Anti-aliased UI fonts (tools/bake_aatext.py). Pixels are 2 bits, MSB first: 0 paper, 1 light grey, 2 dark grey, 3 black.", "#pragma once", "#include <stdint.h>",
-       "struct AGlyph { uint16_t off; uint8_t w, h; int8_t xo, yo; uint8_t adv; };", "struct AFont { const uint8_t* bits; const AGlyph* g; uint8_t first, last, yAdv; };"]
+out = ["// Anti-aliased UI fonts (tools/bake_aatext.py). Pixels are 2 bits, MSB first: 0 paper, 1 light grey, 2 dark grey, 3 black.", "#pragma once", '#include "../fonttypes.h"']
 prev = []
-for name, cap, ital, yadv in FONTS:
+for name, cap, ital, yadv, *only in FONTS:
     px = round(cap / CAPR * 2) / 2; f = ImageFont.truetype(TTF, px); bits = bytearray(); gl = []; pad = 8
     for code in CODES:
+        if only and code != 0x20 and chr(code) not in only[0]: gl.append((len(bits), 0, 0, 0, 0, 0)); continue
         S = 4   # supersample for smoother edges
         fb = ImageFont.truetype(TTF, px * S)
         if code == 0x80: ch = None
@@ -47,7 +48,7 @@ for name, cap, ital, yadv in FONTS:
         gl.append((off, w, h, x0 - pad, y0 - base, adv))
     out.append(f"static const uint8_t {name}_BITS[] = {{" + ",".join(map(str, bits)) + "};")
     out.append(f"static const AGlyph {name}_G[] = {{" + ",".join("{%d,%d,%d,%d,%d,%d}" % g for g in gl) + "};")
-    out.append(f"static const AFont {name} = {{{name}_BITS, {name}_G, 0x20, 0x82, {yadv}}};")
+    out.append(f"extern const AFont {name} = {{{name}_BITS, {name}_G, 0x20, 0x82, {yadv}}};")
     print(name, px, "bytes", len(bits))
     prev.append((name, gl, bits))
 open(OUT, "w").write("\n".join(out) + "\n")

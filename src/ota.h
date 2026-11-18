@@ -5,3 +5,4 @@
 void otaBootCheck();      // call first thing in setup()
 void otaMarkGood();       // call after the first successful fetch + draw
 bool otaCheckAndUpdate(); // true = flashed (device reboots)
+bool otaChecked();         // the last check reached GitHub (even if there was nothing new)

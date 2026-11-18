@@ -1,12 +1,9 @@
-#pragma once
+#include "gfx.h"
+#include "views.h"
 // Engines view (cfg.view == 2): planes in range flow through a 3D-rendered turbofan into engine makers; table of engines and people below.
-// Included from draw.cpp (uses its epd, put(), tw(), box(), commas(), dU(), uName()). Design notes: tools/bake_engine.py, README.
+// Uses the shared helpers from gfx.h. Design notes: tools/bake_engine.py, README.
 #include "engines.h"
 #include "engine_img.h"
-#include "fonts/Nico12.h"
-#include "fonts/Nico13.h"
-#include "fonts/Nico15.h"
-#include "fonts/Nico17.h"
 #include "fonts/BigNum.h"
 
 static uint16_t engCol(uint8_t p) {                                         // grey build: lanes are solid greys instead of hatching
@@ -38,6 +35,7 @@ static void engPoly(const float* px, const float* py, int n, uint8_t pat) {     
       else if (pat == 0) epd.drawFastHLine(x0, y, x1 - x0 + 1, INK); else for (int x = x0; x <= x1; x++) if (engPat(pat, x, y)) epd.drawPixel(x, y, INK);
     }
   }
+  if (g_grey) return;                                                      // grey lanes are plain solid shapes; the black-and-white hatch keeps its outline
   for (int i = 0; i < n; i++) { int j = (i + 1) % n; bool flat = fabsf(px[j] - px[i]) >= fabsf(py[j] - py[i]);
     epd.drawLine(px[i], py[i], px[j], py[j], INK); epd.drawLine(px[i] + (flat ? 0 : 1), py[i] + (flat ? 1 : 0), px[j] + (flat ? 0 : 1), py[j] + (flat ? 1 : 0), INK); }
 }
@@ -86,7 +84,7 @@ static int bigNum(int x, int top, const String& s, int maxW) {
 }
 static void putRight(const GFXfont* f, int xr, int y, const String& s, uint16_t col = INK) { put(f, xr - tw(f, s), y, s, col); }
 
-static void drawEngines(const char* clock) {
+void drawEngines(const char* clock) {
   Tally T; tallyPlanes(T);
   const int cyE = 166, exLeft = 190, eyTop = cyE - ENG_H / 2;
   const float cfx = exLeft + ENG_FRONT[0], cfy = eyTop + ENG_FRONT[1], crx = exLeft + ENG_REAR[0], cry = eyTop + ENG_REAR[1];

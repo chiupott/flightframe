@@ -7,25 +7,26 @@
 #include <SD.h>
 #include <PNGdec.h>
 #include <Adafruit_GFX.h>
-#include "fonts/Nico14.h"
-#include "fonts/Nico16.h"
+#include "fonts.h"
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_src_x509_crt_bundle_bin_start");
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
 extern const uint8_t rootca_crt_bundle_end[] asm("_binary_src_x509_crt_bundle_bin_end");
-#define SET_CA(c) (c).setCACertBundle(rootca_crt_bundle_start, rootca_crt_bundle_end - rootca_crt_bundle_start)
+#define SET_CA(c) ((c).setCACertBundle(rootca_crt_bundle_start, rootca_crt_bundle_end - rootca_crt_bundle_start), (c).setTimeout(10), (c).setHandshakeTimeout(10))   /* a stuck TLS connection must not freeze the frame: the library default is 120 s */
 #else
-#define SET_CA(c) (c).setCACertBundle(rootca_crt_bundle_start)
+#define SET_CA(c) ((c).setCACertBundle(rootca_crt_bundle_start), (c).setTimeout(10), (c).setHandshakeTimeout(10))   /* a stuck TLS connection must not freeze the frame: the library default is 120 s */
 #endif
 
 static const int W = 800, H = 480, EYE = 290, TOP = 34, YB = 426, Z = 10;
 static const float UP_MAX = 35.0f, DN_MAX = 14.0f, FOV = 110.0f, R_EARTH = 6371000.0f, MAX_M = 60000.0f, STEP = 1.02f, EYE_AGL = 6.0f;
 static const char* TERRAIN = "/window/terrain.bin"; static const char* GEN = "/window/gen.txt"; static const char* DEM = "/window/dem.bin"; static const char* TMP = "/window/t.png";
 
-static String genKey() { char b[48]; snprintf(b, sizeof b, "%.3f,%.3f,%u", cfg.lat, cfg.lon, (unsigned)cfg.heading); return b; }
+static String genKey() { char b[48]; snprintf(b, sizeof b, "%.3f,%.3f,%u", cfg.lat, cfg.lon, (unsigned)cfg.headingWin); return b; }
 bool terrainReady() {
   if (!SD.exists(TERRAIN)) return false;
   File g = SD.open(GEN); if (!g) return true;                       // made by hand: keep it
-  String k = g.readString(); g.close(); return k == genKey();
+  String k = g.readString(); g.close(); if (k != genKey()) return false;
+  File t = SD.open(TERRAIN); uint8_t v = 0; if (t) { uint8_t h[5]; if (t.read(h, 5) == 5) v = h[4]; t.close(); }
+  return v >= 2;                                                     // an old 1-bit skyline made here is rebuilt in the soft 4-grey format
 }
 
 // ---- elevation tiles (AWS Terrain Tiles, terrarium PNG) -> /window/dem.bin: int16 metres, 256x256 per tile, tiles in row order ----
@@ -99,7 +100,7 @@ bool terrainGenerate() {
   SD.mkdir("/window");
   // 1. which tiles: bounding box of the view fan
   float cl = cosf(cfg.lat * DEG_TO_RAD), lamin = cfg.lat, lamax = cfg.lat, lomin = cfg.lon, lomax = cfg.lon;
-  for (int k = 0; k <= 22; k++) { float b = (cfg.heading + (k / 22.0f - 0.5f) * FOV) * DEG_TO_RAD, la = cfg.lat + MAX_M * cosf(b) / 111320.0f, lo = cfg.lon + MAX_M * sinf(b) / (111320.0f * cl);
+  for (int k = 0; k <= 22; k++) { float b = (cfg.headingWin + (k / 22.0f - 0.5f) * FOV) * DEG_TO_RAD, la = cfg.lat + MAX_M * cosf(b) / 111320.0f, lo = cfg.lon + MAX_M * sinf(b) / (111320.0f * cl);
     lamin = fminf(lamin, la); lamax = fmaxf(lamax, la); lomin = fminf(lomin, lo); lomax = fmaxf(lomax, lo); }
   float xa, ya, xb, yb; world(lamax, lomin, xa, ya); world(lamin, lomax, xb, yb);
   tx0 = (int)(xa / 256); ty0 = (int)(ya / 256); nx = (int)(xb / 256) - tx0 + 1; ny = (int)(yb / 256) - ty0 + 1;
@@ -109,7 +110,7 @@ bool terrainGenerate() {
   int n = 0, total = nx * ny, fails = 0;
   for (int ty = 0; ty < ny; ty++) for (int tx = 0; tx < nx; tx++) {
     char m[40]; snprintf(m, sizeof m, "Downloading terrain %d of %d", ++n, total);
-    if (n == 1 || n == total || n % 4 == 0) drawMessage("Building your window view", m);
+    if (n == 1 || n == total || n % 4 == 0) drawProgress("Building your window view", m, 12 * n / total);
     size_t before = demOut.position();
     if (!fetchTile(tx0 + tx, ty0 + ty)) { fails++; demOut.seek(before); }       // missing tile: flat sea-level instead
     size_t want = before + 131072UL; if (demOut.position() < want) { uint8_t z[512] = {0}; while (demOut.position() < want) demOut.write(z, 512); }
@@ -123,12 +124,13 @@ bool terrainGenerate() {
   cv->fillScreen(0);
   int steps = (int)(logf(MAX_M / 120.0f) / logf(STEP)); float* dist = new float[steps]; float dd = 120.0f; for (int i = 0; i < steps; i++, dd *= STEP) dist[i] = dd;
   float ground = elev(cfg.lat, cfg.lon), h0 = ground + EYE_AGL; Serial.printf("terrain: %dx%d tiles, ground %.0f m\n", nx, ny, ground);
-  drawMessage("Building your window view", "Drawing the skyline...");
+  uint32_t tMarch = millis();
   int cur = 0; bool havePrev = false;
   for (int x = 0; x < W; x += 2) {
+    if (x % 80 == 0) drawProgress("Building your window view", "Drawing the skyline", 12 + 88 * x / W, x ? (int)((millis() - tMarch) / 1000UL * (W - x) / x) : -1);
     Col& c = cols[cur];
     for (int y = 0; y < YB; y++) { c.H[y] = NAN; c.D[y] = NAN; }
-    float b = (cfg.heading + ((float)x / (W - 1) - 0.5f) * FOV) * DEG_TO_RAD, sb = sinf(b), cb = cosf(b), prev = -99.0f;
+    float b = (cfg.headingWin + ((float)x / (W - 1) - 0.5f) * FOV) * DEG_TO_RAD, sb = sinf(b), cb = cosf(b), prev = -99.0f;
     for (int i = 0; i < steps; i++) {
       float d = dist[i], h = elev(cfg.lat + d * cb / 111320.0f, cfg.lon + d * sb / (111320.0f * cl));
       float a = atan2f(h - h0 - d * d / (2 * R_EARTH) * 0.87f, d) * RAD_TO_DEG;
@@ -151,15 +153,28 @@ bool terrainGenerate() {
   cv->fillRect(0, YB, W, H - YB, 0); cv->fillRect(0, YB, W, 2, 1);
   static const char* NM[8] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
   for (int deg = 0; deg < 360; deg += 5) {
-    float rel = fmodf(deg - (float)cfg.heading + 540.0f, 360.0f) - 180.0f; if (fabsf(rel) > FOV / 2) continue;
+    float rel = fmodf(deg - (float)cfg.headingWin + 540.0f, 360.0f) - 180.0f; if (fabsf(rel) > FOV / 2) continue;
     int x = (int)(W / 2 + rel / FOV * (W - 1)); int len = deg % 45 == 0 ? 14 : deg % 15 == 0 ? 8 : 4;
     cv->drawFastVLine(x, YB, len, 1); if (deg % 45 == 0) cv->drawFastVLine(x + 1, YB, len, 1);
     if (deg % 45 == 0) label(*cv, &Nico16, x, YB + 31, NM[deg / 45]); else if (deg % 15 == 0) label(*cv, &Nico14, x, YB + 36, String(deg));
   }
-  // 5. write terrain.bin (header: FFWT, v1, fov*10, heading, eye height above sea, 0 peaks; then 800x480 1-bit, 1 = ink)
+  // 5. write terrain.bin (header: FFWT, v2, fov*10, heading, eye height above sea, 0 peaks; then 800x480 at 2 bits per pixel: 0 paper, 1 light grey, 2 dark grey, 3 ink)
+  //    The ink drawing is softened as it is written: ink stays black, and paper next to ink gets a light or dark grey fringe, which takes the jaggies out of lines, ridges and the small labels.
   SD.remove("/window/terrain.tmp"); File o = SD.open("/window/terrain.tmp", FILE_WRITE); if (!o) { delete cv; return false; }
-  uint8_t hd[12] = {'F', 'F', 'W', 'T', 1, (uint8_t)(1100 & 255), (uint8_t)(1100 >> 8), (uint8_t)(cfg.heading & 255), (uint8_t)(cfg.heading >> 8), (uint8_t)((int)lroundf(h0) & 255), (uint8_t)(((int)lroundf(h0) >> 8) & 255), 0};
-  bool ok = o.write(hd, 12) == 12 && o.write(cv->getBuffer(), 48000) == 48000; o.close(); delete cv;
+  uint8_t hd[12] = {'F', 'F', 'W', 'T', 2, (uint8_t)(1100 & 255), (uint8_t)(1100 >> 8), (uint8_t)(cfg.headingWin & 255), (uint8_t)(cfg.headingWin >> 8), (uint8_t)((int)lroundf(h0) & 255), (uint8_t)(((int)lroundf(h0) >> 8) & 255), 0};
+  bool ok = o.write(hd, 12) == 12;
+  { const uint8_t* b = cv->getBuffer(); uint8_t strip[8 * 200];
+    auto ink = [&](int x, int y) -> int { return (x >= 0 && x < W && y >= 0 && y < H) ? ((b[y * 100 + (x >> 3)] >> (7 - (x & 7))) & 1) : 0; };
+    for (int y0 = 0; ok && y0 < H; y0 += 8) {
+      for (int r = 0; r < 8; r++) { int y = y0 + r;
+        for (int x = 0; x < W; x += 4) { uint8_t v = 0;
+          for (int k = 0; k < 4; k++) { int xx = x + k, t = 0;
+            if (ink(xx, y)) t = 3;
+            else { int s = 2 * (ink(xx - 1, y) + ink(xx + 1, y) + ink(xx, y - 1) + ink(xx, y + 1)) + ink(xx - 1, y - 1) + ink(xx + 1, y - 1) + ink(xx - 1, y + 1) + ink(xx + 1, y + 1); t = s >= 7 ? 2 : s >= 3 ? 1 : 0; }
+            v = (v << 2) | t; }
+          strip[r * 200 + (x >> 2)] = v; } }
+      ok = o.write(strip, sizeof strip) == sizeof strip; } }
+  o.close(); delete cv;
   if (!ok) { SD.remove("/window/terrain.tmp"); return false; }
   SD.remove(TERRAIN); SD.rename("/window/terrain.tmp", TERRAIN);
   File g = SD.open(GEN, FILE_WRITE); if (g) { g.print(genKey()); g.close(); }

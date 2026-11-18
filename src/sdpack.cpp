@@ -10,14 +10,15 @@
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_src_x509_crt_bundle_bin_start");
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
 extern const uint8_t rootca_crt_bundle_end[] asm("_binary_src_x509_crt_bundle_bin_end");
-#define SET_CA(c) (c).setCACertBundle(rootca_crt_bundle_start, rootca_crt_bundle_end - rootca_crt_bundle_start)
+#define SET_CA(c) ((c).setCACertBundle(rootca_crt_bundle_start, rootca_crt_bundle_end - rootca_crt_bundle_start), (c).setTimeout(10), (c).setHandshakeTimeout(10))   /* a stuck TLS connection must not freeze the frame: the library default is 120 s */
 #else
-#define SET_CA(c) (c).setCACertBundle(rootca_crt_bundle_start)
+#define SET_CA(c) ((c).setCACertBundle(rootca_crt_bundle_start), (c).setTimeout(10), (c).setHandshakeTimeout(10))   /* a stuck TLS connection must not freeze the frame: the library default is 120 s */
 #endif
 #define PACK_URL "https://github.com/" GH_OWNER "/" GH_REPO "/releases/download/sdpack/"
 struct PackFile { const char* name; const char* path; const char* magic; };
 static const PackFile FILES[] = {
   { "land2.bin",   "/map/land.bin", "FFL2" },     // north-west Europe coastline (Natural Earth, public domain); replaces the older UK-only FFL1 file
+  { "airports.bin", "/map/airports.bin", "FFA1" },   // large + scheduled medium airports worldwide with their runways (OurAirports, public domain)
   { "sprites.bin", "/sprites.bin",  "FFSP" },     // pre-rendered 3D plane pictures for the window view
 };
 static bool fetchOne(const PackFile& pf) {

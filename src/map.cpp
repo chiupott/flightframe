@@ -13,17 +13,20 @@
 extern bool g_grey;
 #define INK 0x0000
 #define PAPER 0xFFFF
-struct Edge { float x0, y0, x1, y1; };
+struct Edge { int16_t x0, y0, x1, y1; };                                   // 1/8 pixel units: half the memory of floats, so the whole coastline fits
+static const float EQ = 8.0f;
 
 // ---------- land ----------
 static int16_t rd16(const uint8_t* p) { return (int16_t)(p[0] | (p[1] << 8)); }
 static int32_t rd32(const uint8_t* p) { return (int32_t)(p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24)); }
 // Adds one coastline segment to E, keeping only what can change the fill or show in the view square:
 // segments wholly above/below it are dropped; ones wholly left/right are squashed to the edge so scanline parity stays right.
+static const size_t EDGE_CAP = 5200;                                       // 41 KB
 static void addEdge(std::vector<Edge>& E, float px, float py, float x, float y) {
+  if (E.size() >= EDGE_CAP) return;                                      // never grow the vector (a doubling needs one big free block, and the heap has none to spare)
   if ((py < -3 && y < -3) || (py > VW + 3 && y > VW + 3)) return;
   if (px < -4 && x < -4) { px = x = -4; } else if (px > VW + 4 && x > VW + 4) { px = x = VW + 4; }
-  E.push_back({px, py, x, y});
+  E.push_back({(int16_t)lroundf(px * EQ), (int16_t)lroundf(py * EQ), (int16_t)lroundf(x * EQ), (int16_t)lroundf(y * EQ)});
 }
 static void landEdges(std::vector<Edge>& E) {
   File f = SD.open("/map/land.bin"); if (!f) return;
@@ -43,8 +46,8 @@ static void landEdges(std::vector<Edge>& E) {
         uint32_t take = min<uint32_t>(np - i, sizeof buf / 8); if (f.read(buf, take * 8) != (int)(take * 8)) { f.close(); return; }
         for (uint32_t k = 0; k < take; k++, i++) {
           float x, y; viewProj(rd32(buf + k * 8 + 4) / 1e4f, rd32(buf + k * 8) / 1e4f, x, y);
-          if (i) addEdge(E, px, py, x, y);
-          px = x; py = y;
+          if (!i) { px = x; py = y; }
+          else { float ex = x - px, ey = y - py; if (i == np - 1 || ex * ex + ey * ey >= 2.0f) { addEdge(E, px, py, x, y); px = x; py = y; } }   // skip sub-pixel steps: far fewer edges, same picture
         }
       }
     }
@@ -70,7 +73,7 @@ static void fillLand(Adafruit_GFX& g, const std::vector<Edge>& E) {
   std::vector<float> xs;
   for (int y = 0; y < VW; y++) {
     float yc = y + 0.5f; xs.clear();
-    for (const Edge& e : E) if ((e.y0 <= yc && e.y1 > yc) || (e.y1 <= yc && e.y0 > yc)) xs.push_back(e.x0 + (yc - e.y0) * (e.x1 - e.x0) / (e.y1 - e.y0));
+    for (const Edge& e : E) { float y0 = e.y0 / EQ, y1 = e.y1 / EQ; if ((y0 <= yc && y1 > yc) || (y1 <= yc && y0 > yc)) { float x0 = e.x0 / EQ, x1 = e.x1 / EQ; xs.push_back(x0 + (yc - y0) * (x1 - x0) / (y1 - y0)); } }
     std::sort(xs.begin(), xs.end());
     for (size_t i = 0; i + 1 < xs.size(); i += 2) {
       int a = max(0, (int)lroundf(xs[i])), c = min(VW, (int)lroundf(xs[i + 1]));
@@ -87,9 +90,10 @@ static bool clipLine(float& x0, float& y0, float& x1, float& y1) {           // 
   float nx0 = x0 + t0 * dx, ny0 = y0 + t0 * dy, nx1 = x0 + t1 * dx, ny1 = y0 + t1 * dy; x0 = nx0; y0 = ny0; x1 = nx1; y1 = ny1; return true;
 }
 static void outlineLand(Adafruit_GFX& g, const std::vector<Edge>& E) {
-  for (Edge e : E) {
-    if (!clipLine(e.x0, e.y0, e.x1, e.y1)) continue;
-    g.drawLine(e.x0, e.y0, e.x1, e.y1, INK); g.drawLine(e.x0 + 1, e.y0, e.x1 + 1, e.y1, INK); g.drawLine(e.x0, e.y0 + 1, e.x1, e.y1 + 1, INK);
+  for (const Edge& q : E) {
+    float x0 = q.x0 / EQ, y0 = q.y0 / EQ, x1 = q.x1 / EQ, y1 = q.y1 / EQ;
+    if (!clipLine(x0, y0, x1, y1)) continue;
+    g.drawLine(x0, y0, x1, y1, INK); g.drawLine(x0 + 1, y0, x1 + 1, y1, INK); g.drawLine(x0, y0 + 1, x1, y1 + 1, INK);
   }
 }
 
@@ -186,8 +190,41 @@ static void drawRain(Adafruit_GFX& g) {
 void mapDraw(Adafruit_GFX& g) {
   if (g_grey) g.fillRect(0, 0, VW, VW, GREY_L);                                                           // sea: light grey, land stays white
   else for (int y = 3; y < VW; y += 6) for (int x = 0; x < VW; x++) if ((x & 7) < 3) g.drawPixel(x, y, INK);   // B/W radar: sea = 3-on 5-off dashes every 6 rows
-  std::vector<Edge> E; landEdges(E);
+  std::vector<Edge> E; E.reserve(EDGE_CAP); landEdges(E); Serial.printf("map edges %u\n", (unsigned)E.size());
   fillLand(g, E);
   if (cfg.rain) drawRain(g);
   outlineLand(g, E);
+}
+
+// ---------- airfields ----------
+struct AptRaw { char code[5]; bool large; uint8_t n; float la[6][2], lo[6][2]; };
+static AptRaw aptCache[10]; static int aptCount = 0; static float aptLat = 1e9f, aptLon = 1e9f, aptRad = -1; static bool aptReady = false;
+static void aptLoad() {
+  aptCount = 0; aptLat = cfg.lat; aptLon = cfg.lon; aptRad = cfg.radiusMi; aptReady = true;
+  File f = SD.open("/map/airports.bin"); if (!f) return;
+  uint8_t h[8]; if (f.read(h, 8) != 8 || memcmp(h, "FFA1", 4)) { f.close(); return; }
+  uint32_t n = (uint32_t)rd32(h + 4); float cl = cosf(cfg.lat * DEG_TO_RAD), lim = cfg.radiusMi * 1.4f + 3.0f;
+  for (uint32_t i = 0; i < n; i++) {
+    uint8_t r[14]; if (f.read(r, 14) != 14) break;
+    float la = rd32(r) / 1e4f, lo = rd32(r + 4) / 1e4f, dy = (la - cfg.lat) * 69.05f, dx = (lo - cfg.lon) * 69.17f * cl; uint8_t nr = r[13];
+    if (dx * dx + dy * dy > lim * lim) { f.seek(f.position() + (size_t)nr * 16); continue; }
+    AptRaw a; memcpy(a.code, r + 8, 4); a.code[4] = 0; a.large = r[12] & 1; a.n = min<uint8_t>(nr, 6);
+    for (uint8_t k = 0; k < nr; k++) { uint8_t q[16]; if (f.read(q, 16) != 16) { f.close(); return; } if (k < 6) { a.la[k][0] = rd32(q) / 1e4f; a.lo[k][0] = rd32(q + 4) / 1e4f; a.la[k][1] = rd32(q + 8) / 1e4f; a.lo[k][1] = rd32(q + 12) / 1e4f; } }
+    if (aptCount < 10) aptCache[aptCount++] = a;
+    else if (a.large) for (int k = 0; k < 10; k++) if (!aptCache[k].large) { aptCache[k] = a; break; }            // keep large airports when there are too many
+  }
+  f.close();
+}
+int aptList(Apt* out, int maxN) {
+  if (!aptReady || aptLat != cfg.lat || aptLon != cfg.lon || aptRad != cfg.radiusMi) aptLoad();
+  int m = 0;
+  for (int i = 0; i < aptCount && m < maxN; i++) {
+    const AptRaw& a = aptCache[i]; Apt& o = out[m]; memcpy(o.code, a.code, 5); o.large = a.large; o.n = a.n; float sx = 0, sy = 0;
+    for (int k = 0; k < a.n; k++) { viewProj(a.la[k][0], a.lo[k][0], o.r[k].x0, o.r[k].y0); viewProj(a.la[k][1], a.lo[k][1], o.r[k].x1, o.r[k].y1); sx += o.r[k].x0 + o.r[k].x1; sy += o.r[k].y0 + o.r[k].y1; }
+    o.cx = sx / (2 * a.n); o.cy = sy / (2 * a.n);
+    for (int k = 0; k < a.n; k++) { o.r[k].x0 = o.cx + (o.r[k].x0 - o.cx) * 1.5f; o.r[k].y0 = o.cy + (o.r[k].y0 - o.cy) * 1.5f; o.r[k].x1 = o.cx + (o.r[k].x1 - o.cx) * 1.5f; o.r[k].y1 = o.cy + (o.r[k].y1 - o.cy) * 1.5f; }
+    if (o.cx < -12 || o.cx > VW + 12 || o.cy < -12 || o.cy > VW + 12) continue;
+    m++;
+  }
+  return m;
 }
