@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Send a private note to the frame (it appears as a full-screen card until BOOT is pressed).
-Usage: sendmsg.py "text" [--pic name] [--dry]      --pic = a picture on the frame's SD card at /msg/<name>.mg (make it with img2lg.py)
+Usage: sendmsg.py "text" [--pic name] [--dry]      --pic = a picture made with mkpic.py and uploaded; the frame fetches it by itself the first time (or already has /msg/<name>.mg on its SD card)
 The text is scrambled with the key built into the firmware and signed with your private key (~/Documents/JoshProject/_keys/msg_signing_key.pem).
 The frame shows only messages signed with that key. Posts to the ntfy.sh mailbox named in msg_keys.h; the frame checks it about once a minute."""
 import sys, os, json, time, base64, urllib.request

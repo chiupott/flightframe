@@ -7,13 +7,25 @@
 #include "gfx.h"
 #include "fonts.h"
 #include "storage.h"
+#include "config.h"
 #include <SD.h>
+#include <HTTPClient.h>
+#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <mbedtls/md.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/gcm.h>
 #include <mbedtls/base64.h>
 extern bool g_grey;
+extern const uint8_t rootca_crt_bundle_start[] asm("_binary_src_x509_crt_bundle_bin_start");
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+extern const uint8_t rootca_crt_bundle_end[] asm("_binary_src_x509_crt_bundle_bin_end");
+#define SET_CA(c) ((c).setCACertBundle(rootca_crt_bundle_start, rootca_crt_bundle_end - rootca_crt_bundle_start), (c).setTimeout(10), (c).setHandshakeTimeout(10))
+#else
+#define SET_CA(c) ((c).setCACertBundle(rootca_crt_bundle_start), (c).setTimeout(10), (c).setHandshakeTimeout(10))
+#endif
+#define PIC_URL "https://github.com/" GH_OWNER "/" GH_REPO "/releases/download/sdpack/msgpic-"
 // Packed message (base64 in the mailbox): ver 1 | nonce 12 | ctLen 1 | ciphertext | GCM tag 16 | ECDSA-P256 signature (DER) over everything before it.
 // Plaintext: sent time (4 bytes, big endian) | picture-name length 1 | picture name | text.
 static bool unpack(const String& b64, Msg& m) {
@@ -33,6 +45,28 @@ static bool unpack(const String& b64, Msg& m) {
   m.text = ""; for (size_t i = 5 + pl; i < ctl; i++) m.text += (char)pt[i];
   return m.text.length() > 0;
 }
+static const int PIC_MAXW = 250, PIC_MAXH = 296;
+// A picture the card names but the SD card lacks is fetched once from the release (tools/mkpic.py): "FFMX" | nonce 12 | ctLen u16 | ciphertext | GCM tag 16 | ECDSA signature over all before it; the picture name is the GCM extra data, so one file cannot stand in for another.
+static bool picFetch(const String& name) {
+  if (!name.length()) return true;
+  String path = String("/msg/") + name + ".mg"; if (SD.exists(path.c_str())) return true;
+  WiFiClientSecure c; SET_CA(c); HTTPClient h; h.setTimeout(20000); h.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); h.setUserAgent("FlightFrame/" FW_VERSION);
+  if (!h.begin(c, String(PIC_URL) + name + ".bin")) return false;
+  int code = h.GET(), len = h.getSize(); Serial.printf("msg: picture %s http %d len %d\n", name.c_str(), code, len);
+  if (code != 200 || len < 150 || len > 20000) { h.end(); return false; }
+  uint8_t* raw = (uint8_t*)malloc(len); if (!raw) { h.end(); return false; }
+  WiFiClient* st = h.getStreamPtr(); int got = 0; uint32_t last = millis();
+  while (got < len && h.connected() && millis() - last < 20000) { int n = st->readBytes(raw + got, len - got); if (n <= 0) { delay(5); continue; } got += n; last = millis(); }
+  h.end(); bool ok = got == len && !memcmp(raw, "FFMX", 4); size_t ctl = ok ? (raw[16] | (raw[17] << 8)) : 0, body = 18 + ctl + 16;
+  ok = ok && ctl > 4 && ctl <= 20000 && (size_t)len > body + 8;
+  uint8_t hash[32]; ok = ok && mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), raw, body, hash) == 0;
+  if (ok) { mbedtls_pk_context pk; mbedtls_pk_init(&pk); ok = mbedtls_pk_parse_public_key(&pk, (const uint8_t*)MSG_PUBKEY_PEM, sizeof MSG_PUBKEY_PEM) == 0 && mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, hash, 32, raw + body, len - body) == 0; mbedtls_pk_free(&pk); }
+  uint8_t* pt = ok ? (uint8_t*)malloc(ctl) : nullptr; ok = ok && pt;
+  if (ok) { mbedtls_gcm_context g; mbedtls_gcm_init(&g); ok = mbedtls_gcm_setkey(&g, MBEDTLS_CIPHER_ID_AES, MSG_AESKEY, 256) == 0 && mbedtls_gcm_auth_decrypt(&g, ctl, raw + 4, 12, (const uint8_t*)name.c_str(), name.length(), raw + 18 + ctl, 16, raw + 18, pt) == 0; mbedtls_gcm_free(&g); }
+  if (ok) { int w = pt[0] | (pt[1] << 8), hh = pt[2] | (pt[3] << 8); ok = w >= 1 && hh >= 1 && w <= PIC_MAXW && hh <= PIC_MAXH && ctl == (size_t)(4 + hh * ((w + 3) / 4)); }
+  if (ok) { SD.mkdir("/msg"); String tmp = path + ".tmp"; SD.remove(tmp.c_str()); File f = SD.open(tmp.c_str(), FILE_WRITE); ok = f && f.write(pt, ctl) == ctl; if (f) f.close(); if (ok) ok = SD.rename(tmp.c_str(), path.c_str()); else SD.remove(tmp.c_str()); }
+  free(pt); free(raw); Serial.printf("msg: picture %s %s\n", name.c_str(), ok ? "saved" : "rejected"); return ok;
+}
 bool msgPoll(Msg& out) {
   String last = prefGet("msgid"), url = String("https://ntfy.sh/") + MSG_TOPIC + "/json?poll=1&since=" + (last.length() ? last : String("6h"));
   String body; if (!httpsGet(url, body, 8000)) { if (last.length() && g_dHttp == 404) prefSet("msgid", ""); return false; }
@@ -48,13 +82,15 @@ bool msgPoll(Msg& out) {
     if (m.sent <= seen || (now && m.sent + 48UL * 3600UL < now)) continue;          // already shown, or too old to matter
     out = m; got = true; seen = m.sent;
   }
+  static uint8_t picTries = 0;
+  if (got && !picFetch(out.pic)) { if (++picTries < 4) { Serial.println("msg: picture not here yet, will retry"); return false; } }       // keep the message in the mailbox and try again next poll; after 3 tries show it without the picture
+  if (got) picTries = 0;
   if (newest != last) prefSet("msgid", newest);
   if (got) prefSet("msgt", String(seen));
   Serial.printf("msg: %s\n", got ? "new message" : "none");
   return got;
 }
 // Picture file /msg/<name>.mg: u16 width, u16 height (little endian), then rows of 4 greys, 4 px per byte, MSB first (tools/img2lg.py).
-static const int PIC_MAXW = 250, PIC_MAXH = 296;
 static bool picSize(const String& name, int& w, int& h) {
   w = h = 0; if (!name.length()) return false;
   File f = SD.open((String("/msg/") + name + ".mg").c_str()); if (!f) return false;
