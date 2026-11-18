@@ -134,11 +134,15 @@ void drawEngines(const char* clock) {
       if (lo < 0) continue;
       epd.drawFastHLine(exLeft + lo, eyTop + r, hi - lo + 1, PAPER);
       for (int c = lo; c <= hi; c++) { int q = (pgm_read_byte(&ENG_G[r * gs + (c >> 2)]) >> (6 - 2 * (c & 3))) & 3; if (q) epd.drawPixel(exLeft + c, eyTop + r, q == 3 ? INK : q == 2 ? GREY_D : GREY_L); } }
+#ifndef FF_GREY
   } else { int stride = (ENG_W + 7) / 8;
     for (int r = 0; r < ENG_H; r++) { int lo = -1, hi = -1;
       for (int b = 0; b < stride; b++) { uint8_t v = pgm_read_byte(&ENG_BITS[r * stride + b]); if (!v) continue; if (lo < 0) { int c = 0; while (!(v & (0x80 >> c))) c++; lo = b * 8 + c; } int c = 7; while (!(v & (0x80 >> c))) c--; hi = b * 8 + c; }
       if (lo >= 0) epd.drawFastHLine(exLeft + lo, eyTop + r, hi - lo + 1, PAPER); }
     epd.drawBitmap(exLeft, eyTop, ENG_BITS, ENG_W, ENG_H, INK); }
+#else
+  }
+#endif
   // ---- bottom third: engines and people ----
   epd.fillRect(0, 318, 800, 3, INK);
   int hx = put(&Nico16, 8, 340, "IN THE AIR"); hx = put(&Nico14, hx + 10, 341, String("within ") + (int)lroundf(dU(cfg.radiusMi)) + " " + uName(), GREY_D);
