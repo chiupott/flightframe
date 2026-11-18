@@ -47,7 +47,8 @@ static bool fetchOne(const PackFile& pf) {
 // Airline logos: one packed file (tools/pack_logos.py) in the sdpack release; the frame unpacks it to /logos/<ICAO>.lg and leaves a marker so it only does this once.
 #define LOGOS_URL PACK_URL "logos.pack"
 #define LOGOS2_URL PACK_URL "logos2.pack"       // grey marks from soaring-symbols; unpacked over the 1-bit ones with the same names
-static bool logosFetchAndUnpack(const char* url = LOGOS_URL, const char* marker = "/logos/.ok") {
+// dir/onlyIfGrey: the grey marks overwrite the original 1-bit marks of the airlines they cover, so for the B/W radar the original pack is unpacked again into /logos/bw/, only for the airlines whose /logos mark is grey.
+static bool logosFetchAndUnpack(const char* url = LOGOS_URL, const char* marker = "/logos/.ok", const char* dir = "/logos", bool onlyIfGrey = false) {
   WiFiClientSecure c; SET_CA(c);
   HTTPClient h; h.setTimeout(20000); h.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); h.setUserAgent("FlightFrame/" FW_VERSION);
   if (!h.begin(c, url)) return false;
@@ -67,12 +68,13 @@ static bool logosFetchAndUnpack(const char* url = LOGOS_URL, const char* marker 
   if (!ok || left != 0) { SD.remove("/logos.tmp"); return false; }
   File in = SD.open("/logos.tmp"); if (!in) return false;
   uint8_t hd[6]; bool good = in.read(hd, 6) == 6 && !memcmp(hd, "FFLP", 4); int count = good ? hd[4] | (hd[5] << 8) : 0, wrote = 0;
-  SD.mkdir("/logos");
+  SD.mkdir("/logos"); if (strcmp(dir, "/logos")) SD.mkdir(dir);
   for (int i = 0; i < count && good; i++) {
     uint8_t eh[6]; if (in.read(eh, 6) != 6) { good = false; break; }
-    char name[16]; snprintf(name, sizeof name, "/logos/%.4s.lg", (const char*)eh);
+    char name[28]; snprintf(name, sizeof name, "%s/%.4s.lg", dir, (const char*)eh);
     int n = eh[4] | (eh[5] << 8); if (n <= 0 || n > 1024) { good = false; break; }
     if (in.read(buf, n) != n) { good = false; break; }
+    if (onlyIfGrey) { char cur[24]; snprintf(cur, sizeof cur, "/logos/%.4s.lg", (const char*)eh); File t = SD.open(cur); uint8_t hh[2]; bool grey = t && t.read(hh, 2) == 2 && (hh[1] & 0x80); if (t) t.close(); if (!grey) { wrote++; continue; } }
     File o = SD.open(name, FILE_WRITE); if (!o) { good = false; break; }
     bool w = o.write(buf, n) == (size_t)n; o.close(); if (!w) { good = false; break; }
     wrote++;
@@ -89,12 +91,13 @@ static bool haveFile(const PackFile& pf) {          // present and of the right 
 }
 int sdpackEnsure() {
   int missing = 0; for (auto& pf : FILES) if (!haveFile(pf)) missing++;
-  bool needLogos = !SD.exists("/logos/.ok"), needLogos2 = !SD.exists("/logos/.ok2");
-  if (!missing && !needLogos && !needLogos2) return 0;
+  bool needLogos = !SD.exists("/logos/.ok"), needLogos2 = !SD.exists("/logos/.ok2"), needBw = !SD.exists("/logos/.okbw");
+  if (!missing && !needLogos && !needLogos2 && !needBw) return 0;
   drawMessage("Setting up the SD card", needLogos ? "Downloading map, planes and logos..." : "Downloading map and planes...");
   int got = 0; for (auto& pf : FILES) if (!haveFile(pf) && fetchOne(pf)) got++;
   if (needLogos && logosFetchAndUnpack()) got++;
-  if (logosFetchAndUnpack(LOGOS2_URL, "/logos/.ok2")) got++;
+  if (needLogos2 && logosFetchAndUnpack(LOGOS2_URL, "/logos/.ok2")) got++;
+  if (needBw && SD.exists("/logos/.ok2") && logosFetchAndUnpack(LOGOS_URL, "/logos/.okbw", "/logos/bw", true)) got++;      // after the grey marks are in, so we know which originals they replaced
   Serial.printf("sdpack: %d fetched\n", got);
   return got;
 }

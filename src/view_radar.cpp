@@ -6,7 +6,8 @@ static void drawAirports();
 static bool airlineOf(const char* cs, char* out) { if (strlen(cs) < 4 || !isalpha(cs[0]) || !isalpha(cs[1]) || !isalpha(cs[2]) || !isdigit(cs[3])) return false; memcpy(out, cs, 3); out[3] = 0; for (int i = 0; i < 3; i++) out[i] = toupper(out[i]); return true; }
 static void drawLogo(const char* cs, int x, int y) {
   char al[4]; if (!airlineOf(cs, al)) return;
-  size_t n = 0; uint8_t* b = storLoad((String("/logos/") + al + ".lg").c_str(), n);
+  size_t n = 0; uint8_t* b = g_grey ? nullptr : storLoad((String("/logos/bw/") + al + ".lg").c_str(), n);        // B/W radar: its own 1-bit marks first
+  if (!b) b = storLoad((String("/logos/") + al + ".lg").c_str(), n);
   if (b && n > 2 && (b[1] & 0x80)) {                                               // 4-grey mark (tools/bake_logos2.py): 2 bits per pixel; the B/W radar keeps the two darker levels
     int w = b[0], h = b[1] & 0x7F, stride = (w + 3) / 4;
     for (int r = 0; r < h; r++) for (int c = 0; c < w; c++) { int q = (b[2 + r * stride + (c >> 2)] >> (6 - 2 * (c & 3))) & 3; if (q) { if (g_grey) epd.drawPixel(x + c, y + r, q == 3 ? INK : q == 2 ? GREY_D : GREY_L); else if (q >= 2) epd.drawPixel(x + c, y + r, INK); } }
