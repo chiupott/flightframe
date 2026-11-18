@@ -19,14 +19,29 @@ static const float EQ = 8.0f;
 // ---------- land ----------
 static int16_t rd16(const uint8_t* p) { return (int16_t)(p[0] | (p[1] << 8)); }
 static int32_t rd32(const uint8_t* p) { return (int32_t)(p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24)); }
-// Adds one coastline segment to E, keeping only what can change the fill or show in the view square:
-// segments wholly above/below it are dropped; ones wholly left/right are squashed to the edge so scanline parity stays right.
+// Adds one coastline segment to E, keeping only what can change the fill or show in the view square.
+// Edges are stored as int16 in 1/8 px, so a point far outside the view (a coast ring that runs across Europe) must be clipped first, or it wraps round and the land fill breaks.
+// Above/below the view: clipped to a thin band (no scanline cares). Left/right of the view: cut at the border and the outside part becomes a vertical edge there, so scanline parity stays right.
 static const size_t EDGE_CAP = 5200;                                       // 41 KB
-static void addEdge(std::vector<Edge>& E, float px, float py, float x, float y) {
+static void pushEdge(std::vector<Edge>& E, float a, float b, float c, float d) {
   if (E.size() >= EDGE_CAP) return;                                      // never grow the vector (a doubling needs one big free block, and the heap has none to spare)
+  E.push_back({(int16_t)lroundf(a * EQ), (int16_t)lroundf(b * EQ), (int16_t)lroundf(c * EQ), (int16_t)lroundf(d * EQ)});
+}
+static void addEdge(std::vector<Edge>& E, float px, float py, float x, float y) {
   if ((py < -3 && y < -3) || (py > VW + 3 && y > VW + 3)) return;
-  if (px < -4 && x < -4) { px = x = -4; } else if (px > VW + 4 && x > VW + 4) { px = x = VW + 4; }
-  E.push_back({(int16_t)lroundf(px * EQ), (int16_t)lroundf(py * EQ), (int16_t)lroundf(x * EQ), (int16_t)lroundf(y * EQ)});
+  const float YL = -8.0f, YH = VW + 8.0f;
+  if (py < YL || y < YL || py > YH || y > YH) {
+    float dy = y - py; if (dy == 0) return;
+    float t0 = (YL - py) / dy, t1 = (YH - py) / dy; if (t0 > t1) { float t = t0; t0 = t1; t1 = t; }
+    if (t0 < 0) t0 = 0; if (t1 > 1) t1 = 1; if (t0 >= t1) return;
+    float ax = px + t0 * (x - px), ay = py + t0 * dy, bx = px + t1 * (x - px), by = py + t1 * dy; px = ax; py = ay; x = bx; y = by;
+  }
+  for (int s = 0; s < 2; s++) {
+    float B = s ? VW + 4.0f : -4.0f; bool ia = s ? px > B : px < B, ic = s ? x > B : x < B;
+    if (ia && ic) { px = x = B; }
+    else if (ia || ic) { float cy = py + (B - px) / (x - px) * (y - py); if (ia) { pushEdge(E, B, py, B, cy); px = B; py = cy; } else { pushEdge(E, B, cy, B, y); x = B; y = cy; } }
+  }
+  pushEdge(E, px, py, x, y);
 }
 static void landEdges(std::vector<Edge>& E) {
   File f = SD.open("/map/land.bin"); if (!f) return;

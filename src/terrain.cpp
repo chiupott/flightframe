@@ -20,7 +20,7 @@ static const int W = 800, H = 480, EYE = 290, TOP = 34, YB = 426, Z = 10;
 static const float UP_MAX = 35.0f, DN_MAX = 14.0f, FOV = 110.0f, R_EARTH = 6371000.0f, MAX_M = 60000.0f, STEP = 1.02f, EYE_AGL = 6.0f;
 static const char* TERRAIN = "/window/terrain.bin"; static const char* GEN = "/window/gen.txt"; static const char* DEM = "/window/dem.bin"; static const char* TMP = "/window/t.png";
 
-static String genKey() { char b[48]; snprintf(b, sizeof b, "%.3f,%.3f,%u|v2", cfg.lat, cfg.lon, (unsigned)cfg.headingWin); return b; }   // v2: low-lying inland homes (Netherlands) draw their polders as land, not sea
+static String genKey() { char b[48]; snprintf(b, sizeof b, "%.3f,%.3f,%u", cfg.lat, cfg.lon, (unsigned)cfg.headingWin); return b; }
 bool terrainReady() {
   if (!SD.exists(TERRAIN)) return false;
   File g = SD.open(GEN); if (!g) return true;                       // made by hand: keep it
@@ -68,16 +68,7 @@ static int16_t demAt(int ix, int iy) {
   if (ctag[slot] != (int32_t)id) { demIn.seek(id << 6); demIn.read(ln, 64); ctag[slot] = id; }
   return (int16_t)(ln[off & 63] | (ln[(off & 63) + 1] << 8));
 }
-static bool lowland = false;                                  // home has no deep water nearby: land below sea level (polders) is land, not sea
-static const float SEA_DEEP = -8.0f;                          // in lowland mode only water deeper than this counts as sea (the terrain data has no water mask; the lowest Dutch polder is about -7 m)
-static int16_t rawElev(float lat, float lon) { float X, Y; world(lat, lon, X, Y); return demAt((int)lroundf(X - tx0 * 256), (int)lroundf(Y - ty0 * 256)); }
-static float elev(float lat, float lon) { int16_t h = rawElev(lat, lon); if (lowland) return h > SEA_DEEP ? fmaxf((float)h, 1.5f) : 0.0f; return h > 0 ? h : 0; }
-static bool homeIsLowland() {                                   // no sample deeper than SEA_DEEP within 8 km of home => no real sea next door
-  float cl = cosf(cfg.lat * DEG_TO_RAD);
-  for (int k = 0; k < 16; k++) { float b = k * 22.5f * DEG_TO_RAD; for (int r = 1; r <= 5; r++) { float d = r == 1 ? 1000.0f : r == 2 ? 2500.0f : r == 3 ? 4000.0f : r == 4 ? 6000.0f : 8000.0f;
-      if (rawElev(cfg.lat + d * cosf(b) / 111320.0f, cfg.lon + d * sinf(b) / (111320.0f * cl)) <= SEA_DEEP) return false; } }
-  return true;
-}
+static float elev(float lat, float lon) { float X, Y; world(lat, lon, X, Y); int16_t h = demAt((int)lroundf(X - tx0 * 256), (int)lroundf(Y - ty0 * 256)); return h > 0 ? h : 0; }
 
 static float vy(float a) { if (a >= 0) return EYE - (EYE - TOP) * sqrtf(fminf(a, UP_MAX) / UP_MAX); return EYE + (YB - EYE) * sqrtf(fminf(-a, DN_MAX) / DN_MAX); }
 struct Col { float H[426], D[426]; };
@@ -132,7 +123,6 @@ bool terrainGenerate() {
   if (!cv || !cv->getBuffer() || !cols) { demIn.close(); delete cv; delete[] cols; return false; }
   cv->fillScreen(0);
   int steps = (int)(logf(MAX_M / 120.0f) / logf(STEP)); float* dist = new float[steps]; float dd = 120.0f; for (int i = 0; i < steps; i++, dd *= STEP) dist[i] = dd;
-  lowland = homeIsLowland(); Serial.printf("terrain: lowland mode %d\n", lowland);
   float ground = elev(cfg.lat, cfg.lon), h0 = ground + EYE_AGL; Serial.printf("terrain: %dx%d tiles, ground %.0f m\n", nx, ny, ground);
   uint32_t tMarch = millis();
   int cur = 0; bool havePrev = false;
