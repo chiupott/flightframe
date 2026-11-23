@@ -83,7 +83,7 @@ void loop() {
       else { drawMessage("Postcode not found", "Keeping the old location"); delay(4000); }
     }
     drawForceFull(); force = true; }        // settings page on the home Wi-Fi
-  if (!force && millis() - t0 < (cfg.view == 0 && cfg.bw ? 30000UL : POLL_MS) && t0) {
+  if (!force && millis() - t0 < (cfg.view == 0 && cfg.bw ? 15000UL : POLL_MS) && t0) {
     delay(20); return;
   }
   force = false; t0 = millis(); settingsSuspend(); uint32_t lp = t0; auto lap = [&](const char* w) { uint32_t n = millis(); if (n - lp > 1500) Serial.printf("slow step: %s %lu ms\n", w, (unsigned long)(n - lp)); lp = n; };
@@ -121,7 +121,7 @@ void loop() {
   if (wifi && feed == Feed::Live && (!lastMsg || millis() - lastMsg > 55000UL)) { lastMsg = millis(); if (msgPoll(mg)) { lap("msg"); msgDraw(mg); card = true; return; } }      // a private note: show it instead of the view
   uint32_t tD = millis(); drawScreen(feed, wifi); uint32_t tE = millis();
   Serial.printf("cycle: fetch %lu ms, draw %lu ms, taps waiting %u\n", (unsigned long)(tD - t0), (unsigned long)(tE - tD), (unsigned)btnCount);
-  if (!lastGood && feed == Feed::None) t0 = millis() - ((cfg.view == 0 && cfg.bw ? 30000UL : POLL_MS) - 8000UL);   // nothing fetched yet (network still settling after boot): try again in 8 s, not a minute
+  if (!lastGood && feed == Feed::None) t0 = millis() - ((cfg.view == 0 && cfg.bw ? 15000UL : POLL_MS) - 8000UL);   // nothing fetched yet (network still settling after boot): try again in 8 s, not a minute
   if (feed == Feed::Live && !markedGood) { otaMarkGood(); markedGood = true; }
   if (wifi && feed == Feed::Live && (!lastOta || millis() - lastOta > OTA_CHECK_MS)) { otaCheckAndUpdate(); lastOta = otaChecked() ? millis() : (millis() - OTA_CHECK_MS + 5UL * 60UL * 1000UL); }   // only once the internet is proven; a failed check is retried in 5 minutes
 }

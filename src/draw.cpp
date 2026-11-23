@@ -17,11 +17,11 @@ void drawScreen(Feed feed, bool wifiOk) {
     if (wifiOk && (!lastTry || millis() - lastTry > 30UL * 60UL * 1000UL)) { lastTry = millis(); terrainGenerate(); winRetry(); }
   }
 #ifdef FF_GREY
-  if (cfg.view == 2 && !forced) {                                              // engines view: nothing moves, so only redraw (= flash) when the counts change, or every 5 minutes
-    static uint32_t lastSig = 0, lastAt = 0; Tally T; tallyPlanes(T);
-    uint32_t sig = (T.engines * 131u + T.people) * 31u + T.planesCounted + (feed == Feed::Live ? 7u : 0u);
-    if (lastAt && sig == lastSig && millis() - lastAt < 300000UL) return;
-    lastSig = sig; lastAt = millis();
+  if (!bw) {                                                                   // grey views flash the whole screen, so they redraw only every 2 min (radar, window) or 4 min (engines); planes are still fetched every minute so a message card never waits long. BOOT forces a draw and restarts the wait.
+    static uint32_t lastAt[3] = {0, 0, 0}; static const uint32_t GAP[3] = {110000UL, 110000UL, 230000UL};   // the poll lands every 60 s, so these pass on the 2nd / 4th poll
+    uint8_t v = cfg.view < 3 ? cfg.view : 0;
+    if (!forced && lastAt[v] && millis() - lastAt[v] < GAP[v]) return;
+    lastAt[v] = millis();
   }
 #endif
   bool full = (partials++ % FULL_REFRESH_EVERY) == 0;
