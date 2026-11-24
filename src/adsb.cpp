@@ -1,4 +1,7 @@
 #include "adsb.h"
+#include <vector>
+#include <SD.h>
+#include <math.h>
 #include "diag.h"
 #include "net.h"
 #include "store.h"
@@ -81,7 +84,7 @@ bool adsbPoll() {
 }
 
 // ---- routes (adsbdb), cached by callsign for the session ----
-struct R { char from[5], to[5], fn[9]; bool ok; };
+struct R { char from[5], to[5], fn[9]; bool ok; float oLa, oLo, dLa, dLo; uint8_t geo; };   // geo: 0 airports not placed yet, 1 placed, 2 not found
 static std::map<String, R> cache;
 static int routeBudget = 0;                  // new (uncached) lookups still allowed in this cycle
 void routeLookup(Aircraft& a) {
@@ -107,7 +110,50 @@ void routeLookup(Aircraft& a) {
   strlcpy(a.from, it->second.from, sizeof a.from); strlcpy(a.to, it->second.to, sizeof a.to); a.routeKnown = it->second.ok;
   if (it->second.fn[0]) strlcpy(a.fn, it->second.fn, sizeof a.fn);
 }
+// ---- is the listed route believable for where this plane is and which way it flies? ----
+static void resolveAirports() {            // one pass over the SD airport file for any airport codes not placed yet
+  struct W { char c[5]; float la, lo; bool f; }; std::vector<W> w;
+  for (auto& kv : cache) { R& r = kv.second; if (!r.ok || r.geo) continue;
+    for (const char* c : {r.from, r.to}) { bool have = false; for (auto& x : w) if (!strcmp(x.c, c)) have = true; if (!have && w.size() < 40) { W x{}; strlcpy(x.c, c, sizeof x.c); w.push_back(x); } } }
+  if (w.empty()) return;
+  File f = SD.open("/map/airports.bin"); uint8_t h[8];
+  if (f && f.read(h, 8) == 8 && !memcmp(h, "FFA1", 4)) {
+    uint32_t n = h[4] | (h[5] << 8) | (h[6] << 16) | ((uint32_t)h[7] << 24); static uint8_t buf[512]; size_t bl = 0, bp = 0;
+    auto get = [&](uint8_t* d, size_t k) -> bool { while (k) { if (bp == bl) { int r = f.read(buf, sizeof buf); if (r <= 0) return false; bl = r; bp = 0; } size_t m = min(k, bl - bp); if (d) { memcpy(d, buf + bp, m); d += m; } bp += m; k -= m; } return true; };
+    for (uint32_t i = 0; i < n; i++) {     // record: i32 lat, i32 lon (1e-4 deg), char[4] code, u8 flags, u8 runways, runways x 16 bytes
+      uint8_t rec[14]; if (!get(rec, 14)) break; int32_t la, lo; memcpy(&la, rec, 4); memcpy(&lo, rec + 4, 4);
+      for (auto& x : w) if (!x.f && !strncmp((const char*)rec + 8, x.c, 4)) { x.f = true; x.la = la / 1e4f; x.lo = lo / 1e4f; }
+      if (!get(nullptr, (size_t)rec[13] * 16)) break;
+    }
+  }
+  if (f) f.close();
+  auto find = [&](const char* c, float& la, float& lo) { for (auto& x : w) if (x.f && !strcmp(x.c, c)) { la = x.la; lo = x.lo; return true; } return false; };
+  for (auto& kv : cache) { R& r = kv.second; if (!r.ok || r.geo) continue; bool a = false, b = false;
+    for (auto& x : w) { if (!strcmp(x.c, r.from)) a = true; if (!strcmp(x.c, r.to)) b = true; }
+    if (a && b) r.geo = (find(r.from, r.oLa, r.oLo) && find(r.to, r.dLa, r.dLo)) ? 1 : 2; }
+}
+static float distNm(float la1, float lo1, float la2, float lo2) {
+  const float k = M_PI / 180.0f; float dla = (la2 - la1) * k, dlo = (lo2 - lo1) * k;
+  float a = sinf(dla / 2) * sinf(dla / 2) + cosf(la1 * k) * cosf(la2 * k) * sinf(dlo / 2) * sinf(dlo / 2);
+  return 2 * 3440.065f * asinf(sqrtf(a));
+}
+static float bearingDeg(float la1, float lo1, float la2, float lo2) {
+  const float k = M_PI / 180.0f; float dlo = (lo2 - lo1) * k;
+  float y = sinf(dlo) * cosf(la2 * k), x = cosf(la1 * k) * sinf(la2 * k) - sinf(la1 * k) * cosf(la2 * k) * cosf(dlo);
+  float b = atan2f(y, x) / k; return b < 0 ? b + 360.0f : b;
+}
+// Judges only planes that are cruising (above 15,000 ft) and more than 60 nm from both airports: near an airport planes turn, hold and get vectored, so those routes are never rejected.
+static bool believable(const R& r, const Aircraft& a) {
+  if (r.geo != 1 || a.alt < 15000) return true;
+  float dD = distNm(a.lat, a.lon, r.dLa, r.dLo), dO = distNm(a.lat, a.lon, r.oLa, r.oLo), dOD = distNm(r.oLa, r.oLo, r.dLa, r.dLo);
+  if (dD < 60 || dO < 60) return true;
+  if (dO + dD > 1.3f * dOD + 100) return false;                       // nowhere near the line between the two airports
+  float d = fabsf(fmodf(a.track - bearingDeg(a.lat, a.lon, r.dLa, r.dLo) + 540.0f, 360.0f) - 180.0f);
+  return d <= 75.0f;                                                  // and flying towards the destination, not away or across
+}
 void routeLookupAll() {                       // every plane in range, nearest first, at most 8 new requests per cycle (about 10 s) so a busy sky is filled in over a few cycles
   routeBudget = 8;
   for (uint8_t i = 0; i < nPlanes; i++) routeLookup(planes[i]);
+  resolveAirports();
+  for (uint8_t i = 0; i < nPlanes; i++) { Aircraft& a = planes[i]; if (!a.routeKnown) continue; auto it = cache.find(a.cs); if (it != cache.end() && !believable(it->second, a)) a.routeKnown = false; }
 }
