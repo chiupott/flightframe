@@ -27,7 +27,7 @@ void drawList(const char* clock) {
     int top = 42 + i * RH;
     if (i < nPlanes) {
       const Aircraft& a = planes[i];
-      int x = put(&Nico16, LX + 15, top + 22, a.routeKnown ? String(a.from) + " \xE2\x86\x92 " + a.to : String("Route unknown"));
+      int x = put(&Nico16, LX + 15, top + 22, a.routeKnown ? String(a.from) + " \xE2\x86\x92 " + a.to : String(a.routePending ? "Looking up route..." : "Route unknown"));
       put(&Nico14, x + 6, top + 22, String("(") + String(dU(a.distMi), 1) + " " + uName() + ")", GREY_D);
       drawLogo(a.cs, 800 - 12 - 44, top + 22);
       const Sprite& sp = spriteFor(a.type, a.cat);
@@ -81,7 +81,7 @@ void drawRadar(Feed feed, bool wifiOk, const char* clock) {
   // labels: try the full 3-line label (callsign / type / route) in 12 spots; if none is free drop the type line, then the route, and only then take the least-overlapping in-bounds spot
   for (uint8_t i = 0; i < nPlanes; i++) {
     const Aircraft& a = planes[i];
-    String t1 = a.fn[0] ? a.fn : a.hex, t2 = String("\xE2\x86\x92 ") + (a.routeKnown ? a.to : "?"), t3 = a.type;
+    String t1 = a.fn[0] ? a.fn : a.hex, t2 = String("\xE2\x86\x92 ") + (a.routeKnown ? a.to : a.routePending ? "..." : "?"), t3 = a.type;
     float x = X[i], y = Y[i]; int r = R_[i] + 1;
     struct Cand { Rect b; float x0; float lx, ly; int anc; };
     auto cand = [&](int lines, int k, int w) {
