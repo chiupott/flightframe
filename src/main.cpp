@@ -91,7 +91,7 @@ void loop() {
     viewOnly = false;
     if (lastGood) {
       bool w = WiFi.status() == WL_CONNECTED;
-      if (w && cfg.view == 0) for (uint8_t i = 0; i < nPlanes && i < cfg.rows; i++) routeLookup(planes[i]);   // cached routes are instant
+      if (w && cfg.view == 0) routeLookupAll();   // cached routes are instant; new callsigns are looked up a few per cycle
       uint32_t tv = millis(); drawScreen(millis() - lastGood < 3UL * POLL_MS ? Feed::Live : Feed::Stale, w);
       Serial.printf("view change: drawn in %lu ms, %u taps waiting\n", (unsigned long)(millis() - tv), (unsigned)btnCount);
       return;
@@ -112,7 +112,7 @@ void loop() {
   lap("sdpack");
   Feed feed = Feed::None;
   if (wifi && adsbPoll()) {
-    if (cfg.view == 0) for (uint8_t i = 0; i < nPlanes && i < cfg.rows; i++) routeLookup(planes[i]);   // only the rows we show
+    if (cfg.view == 0) routeLookupAll();   // every plane in range, not only the list rows
     feed = Feed::Live; lastGood = millis();
   } else if (lastGood && millis() - lastGood < 10UL * 60UL * 1000UL) feed = Feed::Stale;
   if (wifi && cfg.rain && (!lastRain || millis() - lastRain > 10UL * 60UL * 1000UL)) { lastRain = millis(); Serial.printf("heap before rain: %u max %u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap()); rainRefresh(); Serial.printf("heap after rain: %u\n", ESP.getFreeHeap()); }

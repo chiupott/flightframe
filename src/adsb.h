@@ -15,5 +15,6 @@ struct Trail { char hex[7] = ""; float lat[MAX_TRAIL_PTS], lon[MAX_TRAIL_PTS]; u
 extern Aircraft planes[MAX_AIRCRAFT]; extern uint8_t nPlanes;   // sorted nearest first
 extern Trail trails[MAX_AIRCRAFT];
 bool adsbPoll();                         // false = feed unreachable (status icon: no feed)
+void routeLookupAll();                    // route for every plane in range (cached by callsign, a few new requests per cycle)
 void routeLookup(Aircraft& a);           // adsbdb, cached by callsign
 const Trail* trailFor(const char* hex);

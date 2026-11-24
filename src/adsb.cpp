@@ -83,10 +83,14 @@ bool adsbPoll() {
 // ---- routes (adsbdb), cached by callsign for the session ----
 struct R { char from[5], to[5], fn[9]; bool ok; };
 static std::map<String, R> cache;
+static int routeBudget = 0;                  // new (uncached) lookups still allowed in this cycle
 void routeLookup(Aircraft& a) {
   if (!a.cs[0]) return;
   auto it = cache.find(a.cs);
   if (it == cache.end()) {
+    if (routeBudget <= 0) return;            // over this cycle's allowance: leave it for the next cycle (the label shows "?" until then)
+    routeBudget--;
+    if (cache.size() >= 200) cache.clear();  // the cache lives in RAM: never let it grow without limit over days
     R r{}; String body;
     if (httpsGet(String("https://api.adsbdb.com/v0/callsign/") + a.cs, body)) {
       JsonDocument d;
@@ -101,4 +105,8 @@ void routeLookup(Aircraft& a) {
   }
   strlcpy(a.from, it->second.from, sizeof a.from); strlcpy(a.to, it->second.to, sizeof a.to); a.routeKnown = it->second.ok;
   if (it->second.fn[0]) strlcpy(a.fn, it->second.fn, sizeof a.fn);
+}
+void routeLookupAll() {                       // every plane in range, nearest first, at most 8 new requests per cycle (about 10 s) so a busy sky is filled in over a few cycles
+  routeBudget = 8;
+  for (uint8_t i = 0; i < nPlanes; i++) routeLookup(planes[i]);
 }
